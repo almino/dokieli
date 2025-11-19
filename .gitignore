@@ -44,3 +44,5 @@ scripts/report.html
 .env
 .dccache
 .yarn/
+.direnv/
+.history/
