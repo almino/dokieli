@@ -5,18 +5,31 @@ import { getAgentHTML, showActionMessage, showGeneralMessages, getResourceSupple
 import { Icon } from './ui/icons.js'
 import { getResourceGraph, getAgentName, getGraphImage, getAgentURL, getAgentPreferredProxy, getAgentPreferredPolicy, setPreferredPolicyInfo, getAgentDelegates, getAgentKnows, getAgentFollowing, getAgentStorage, getAgentOutbox, getAgentInbox, getAgentPreferencesFile, getAgentPublicTypeIndex, getAgentPrivateTypeIndex, getAgentTypeIndex, getAgentSupplementalInfo, getAgentSeeAlso, getAgentPreferencesInfo, getAgentLiked, getAgentOccupations, getAgentPublications, getAgentMade, getAgentOIDCIssuer } from './graph.js'
 import { removeLocalStorageAsSignOut, updateLocalStorageProfile } from './storage.js'
-import { updateButtons } from './ui/buttons.js';
-import { Session } from '@uvdsl/solid-oidc-client-browser';
+import { updateButtons, getButtonHTML } from './ui/buttons.js';
+import { SessionCore } from '@uvdsl/solid-oidc-client-browser/core';
+import { isCurrentScriptSameOrigin, isLocalhost } from './uri.js';
+import { SessionIDB } from '@uvdsl/solid-oidc-client-browser';
+import { i18n } from './i18n.js';
 
 const ns = Config.ns;
-Config['Session'] = new Session();
+
+Config.OIDC['client_id'] = isLocalhost(window.location) ? process.env.DEV_CLIENT_ID : process.env.CLIENT_ID;
+
+const clientid = (Config.OIDC['client_id']) ? Config.OIDC['client_id'] : null;
+
+const currentScriptSameOrigin = isCurrentScriptSameOrigin();
+
+//Use static client registration if there is a Client ID Document URL and the dokieli script is on same origin as webpage and not Web Extension mode. Otherwise, use dynamic registration.
+// Manually configuring the database so that we can restore the session without using the refresher worker 
+Config['Session'] = (clientid && !Config['WebExtensionEnabled'] && currentScriptSameOrigin) ? new SessionCore({ client_id: clientid }, { database: new SessionIDB() }) : new SessionCore({ redirect_uris: [window.location.href], client_name: "dokieli" }, { database: new SessionIDB() });
 
 export async function restoreSession() {
-  return Config['Session'].handleRedirectFromLogin();
+  await Config['Session']?.handleRedirectFromLogin();
+  await Config['Session']?.restore().catch(e => console.log(e.message));
 }
 
 async function showUserSigninSignout (node) {
-  var webId = Config['Session'].isActive ? Config['Session'].webId : null;
+  var webId = Config['Session']?.isActive ? Config['Session']?.webId : null;
 
   // was LoggedIn with new OIDC WebID
   if (webId && (webId != Config.User.IRI || !Config.User.IRI)) {
@@ -40,7 +53,7 @@ async function showUserSigninSignout (node) {
 async function signOut() {
   //Sign out for real
   if (Config['Session']?.isActive) {
-    await Config['Session'].logout();
+    await Config['Session']?.logout();
   }
 
   removeLocalStorageAsSignOut();
@@ -85,8 +98,10 @@ function showUserIdentityInput () {
     signInUser.disabled = true;
   }
 
+  var buttonClose = getButtonHTML({ key: 'dialog.signin.close.button', button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
+
   var webid = Config.User.WebIdDelegate ? Config.User.WebIdDelegate : "";
-  var code = `<aside id="user-identity-input" class="do on">${Config.Button.Close}<h2>Sign in ${Config.Button.Info.SignIn}</h2><div class="info"></div><p id="user-identity-input-webid"><label>WebID</label> <input id="webid" type="text" placeholder="https://csarven.ca/#i" value="${webid}" name="webid"/> <button class="signin">Sign in</button></p></aside>`;
+  var code = `<aside aria-labelledby="user-identity-input-label" class="do on" id="user-identity-input" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 data-i18n="dialog.signin.h2" id="user-identity-input-label">${i18n.t('dialog.signin.h2.textContent')} ${Config.Button.Info.SignIn}</h2>${buttonClose}<div class="info"></div><p id="user-identity-input-webid"><label>WebID</label> <input id="webid" type="text" placeholder="https://csarven.ca/#i" value="${webid}" name="webid"/> <button data-i18n="dialog.signin.submit.button" class="signin" type="button">${i18n.t('dialog.signin.submit.button.textContent')}</button></p></aside>`;
 
   document.body.appendChild(fragmentFromString(code))
 
@@ -207,10 +222,15 @@ function submitSignIn (url) {
  async function signInWithOIDC() {
   const idp = Config.User.OIDCIssuer;
 
-  const redirect_uri = window.location.href.split('#')[0];
+  Config.OIDC['authStartLocation'] = Config.OIDC['client_id'] ? window.location.href.split('#')[0] : null;
+  localStorage.setItem('DO.C.OIDC', JSON.stringify(Config.OIDC));
+
+  let redirect_uri = process.env.OIDC_REDIRECT_URI || (window.location.origin + '/') ;
+
+  redirect_uri = Config.OIDC['client_id'] ? redirect_uri :  window.location.href.split('#')[0];
 
   // Redirects away from dokieli :( but hopefully only briefly :)
-  Config['Session'].login(idp, redirect_uri)
+  Config['Session']?.login(idp, redirect_uri)
     .catch((e) => {
       const message = {
         'content': `Cannot sign in. Using information from profile to personalise the UI.`,
@@ -386,7 +406,7 @@ function afterSetUserInfo () {
 
   for (let i = 0; i < user.length; i++) {
     var article = user[i].closest('article')
-    article.insertAdjacentHTML('afterbegin', '<button class="delete">' + Icon[".fas.fa-trash-alt"] + '</button>')
+    article.insertAdjacentHTML('afterbegin', '<button class="delete" type="button">' + Icon[".fas.fa-trash-alt"] + '</button>')
   }
 
   var buttonDelete = document.querySelectorAll('aside.do blockquote[cite] article button.delete')

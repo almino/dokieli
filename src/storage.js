@@ -335,6 +335,7 @@ async function removeLocalStorageAsSignOut() {
   removeLocalStorageDocumentItems(DO.C.DocumentURL);
 
   removeLocalStorageItem('DO.C.User');
+  removeLocalStorageItem('DO.C.OIDC');
 }
 
 function getLocalStorageItem(key) {
@@ -362,7 +363,9 @@ function getLocalStorageItem(key) {
     try {
       value = JSON.parse(o);
     } catch (e) {
-      value = null;
+      if (typeof o == 'string') {
+        value = o;
+      }
     }
     return Promise.resolve(value);
   }

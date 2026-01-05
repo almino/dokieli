@@ -7,14 +7,15 @@ import { keymapPlugin } from "./toolbar/author/keymap.js";
 import { AuthorToolbar } from "./toolbar/author/author.js";
 import { SocialToolbar } from "./toolbar/social/social.js";
 import Config from "./../config.js";
-import { addMessageToLog, getAgentHTML, insertDocumentLevelHTML, setDate, setEditSelections, showActionMessage, hasNonWhitespaceText, getFragmentOfNodesChildren } from "../doc.js";
-import { getAgentName, getGraphImage, getGraphInbox, getGraphTypes, getResourceGraph } from "../graph.js";
+import { addMessageToLog, getAgentHTML, insertDocumentLevelHTML, setDate, setEditSelections, showActionMessage, hasNonWhitespaceText } from "../doc.js";
+import { getAgentName, getGraphImage, getResourceGraph } from "../graph.js";
 import { fragmentFromString, generateAttributeId } from "../util.js";
 import { updateLocalStorageProfile } from "../storage.js";
 import rdf from 'rdf-ext';
 import { Icon } from "../ui/icons.js";
 import { updateButtons } from "../ui/buttons.js";
 import { cleanProseMirrorOutput } from "../utils/normalization.js";
+import { i18n } from "../i18n.js";
 
 const ns = Config.ns;
 
@@ -34,8 +35,6 @@ export class Editor {
     this.authorToolbarView = this.editorView?.pluginViews[0];
 
     this.hasRunTextQuoteSelector = false;
-
-    this.placeholder = Config.Editor.Placeholder;
   }
 
   // Initialize editor and toolbar based on the default editor mode
@@ -160,7 +159,7 @@ export class Editor {
 
     var documentMenu = document.getElementById('document-menu');
 
-    document.body.replaceChildren(fragmentFromString(`<main><article><h1 aria-label="Add a title" data-placeholder="${this.placeholder.h1}" property="schema:name"></h1><div datatype="rdf:HTML" property="schema:description"><p data-placeholder="${this.placeholder.p}"></p></div></article></main>`));
+    document.body.replaceChildren(fragmentFromString(`<main><article><h1 aria-label="${i18n.t('editor.new.h1.aria-label')}" data-i18n="editor.new.h1" data-placeholder="${i18n.t('editor.new.h1.data-placeholder')}" property="schema:name"></h1><div datatype="rdf:HTML" property="schema:description"><p data-i18n="editor.new.p" data-placeholder="${i18n.t('editor.new.p.data-placeholder')}"></p></div></article></main>`));
 
     document.body.prepend(documentMenu);
 
@@ -188,6 +187,7 @@ export class Editor {
     return toolbarView?.showTextQuoteSelectorFromLocation();
   }
 
+  // Intended for inserting marks
   replaceSelectionWithFragment(fragment){
     // console.log(this)
     const toolbarView = this.authorToolbarView || this.socialToolbarView;
@@ -196,6 +196,16 @@ export class Editor {
     // console.log(toolbarView?.replaceSelectionWithFragment)
     return toolbarView?.replaceSelectionWithFragment(fragment)
   }
+
+  replaceSelectionWithNodeFromFragment(fragment){
+    // console.log(this)
+    const toolbarView = this.authorToolbarView || this.socialToolbarView;
+    // console.log('mode',this.mode)
+    // console.log('toolbar',toolbarView)
+    // console.log(toolbarView?.replaceSelectionWithFragment)
+    return toolbarView?.replaceSelectionWithNodeFromFragment(fragment)
+  }
+
 
   insertFragmentInNode(fragment, parentNode){
     const toolbarView = this.authorToolbarView || this.socialToolbarView;
@@ -219,7 +229,7 @@ export class Editor {
         // console.log(editorView);
 
         //TODO: 'math', 'sparkline',
-        this.authorToolbarView = new AuthorToolbar('author', ['p', 'h1', 'h2', 'h3', 'h4', 'em', 'strong', 'a', 'img', 'ol', 'ul', 'pre', 'code', 'blockquote', 'q', 'semantics', 'citation', 'note'], editorView);
+        this.authorToolbarView = new AuthorToolbar('author', ['p', 'h1', 'h2', 'h3', 'h4', 'em', 'strong', 'a', 'img', 'ol', 'ul', 'pre', 'code', 'blockquote', 'q', 'semantics', 'citation', 'requirement', 'note'], editorView);
 
         // Append DOM portion of toolbar to current editor.
         // editorView.dom.parentNode.appendChild(toolbarView.dom);
@@ -247,7 +257,7 @@ export class Editor {
      });
 
      this.restrictedNodes.forEach(node => {
-      if (node.id == 'document-menu' || node.id == 'document-items') {
+      if (node.id == 'document-menu' || node.id == 'document-info') {
         document.body.prepend(node);
       } else {
         document.body.appendChild(node);

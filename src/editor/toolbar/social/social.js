@@ -3,6 +3,7 @@ import { ToolbarView, annotateFormControls, updateAnnotationInboxForm } from "..
 import Config from "../../../config.js";
 import { exportSelection, getSelectedParentElement, restoreSelection } from "../../utils/annotation.js";
 import { htmlEncode } from "../../../utils/html.js";
+import { i18n } from "../../../i18n.js";
 
 const ns = Config.ns;
 
@@ -139,11 +140,21 @@ export class SocialToolbar extends ToolbarView {
 
   getFormLegends() {
     return {
-      approve: 'Approve',
-      disapprove: 'Disapprove',
-      specificity:  'Specificity',
-      bookmark:  'Bookmark',
-      comment:  'Comment',
+      approve: i18n.t('editor.toolbar.approve.form.legend.textContent'),
+      disapprove: i18n.t('editor.toolbar.disapprove.form.legend.textContent'),
+      specificity: i18n.t('editor.toolbar.specificity.form.legend.textContent'),
+      bookmark: i18n.t('editor.toolbar.bookmark.form.legend.textContent'),
+      comment: i18n.t('editor.toolbar.comment.form.legend.textContent'),
+    }
+  }
+
+  getFormPlaceholders() {
+    return {
+      approve: i18n.t('editor.toolbar.approve.form.textarea.placeholder'),
+      disapprove: i18n.t('editor.toolbar.disapprove.form.textarea.placeholder'),
+      specificity: i18n.t('editor.toolbar.specificity.form.textarea.placeholder'),
+      bookmark: i18n.t('editor.toolbar.bookmark.form.textarea.placeholder'),
+      comment: i18n.t('editor.toolbar.comment.form.textarea.placeholder'),
     }
   }
 

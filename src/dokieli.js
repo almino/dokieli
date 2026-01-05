@@ -8,12 +8,12 @@
 
 import { getResource, setAcceptRDFTypes, postResource, putResource, currentLocation, patchResourceWithAcceptPatch, putResourceWithAcceptPut, copyResource, deleteResource } from './fetcher.js'
 import { getDocument, getDocumentContentNode, showActionMessage, selectArticleNode, eventButtonNotificationsToggle, showRobustLinksDecoration, getResourceInfo,  removeNodesWithIds, getResourceInfoSKOS, removeReferences, buildReferences, removeSelectorFromNode, insertDocumentLevelHTML, getResourceInfoSpecRequirements, getTestDescriptionReviewStatusHTML, createFeedXML, showTimeMap, createMutableResource, createImmutableResource, updateMutableResource, createHTML, getResourceImageHTML, setDocumentRelation, setDate, getLanguageOptionsHTML, getLicenseOptionsHTML, getNodeWithoutClasses, setCopyToClipboard, addMessageToLog, accessModeAllowed, getAccessModeOptionsHTML, focusNote, handleDeleteNote, parseMarkdown, getReferenceLabel, createNoteDataHTML, hasNonWhitespaceText, eventButtonClose, eventButtonInfo, eventButtonSignIn, eventButtonSignOut, getDocumentNodeFromString, updateResourceInfos, accessModePossiblyAllowed, updateSupplementalInfo, processSupplementalInfoLinkHeaders } from './doc.js'
-import { getProxyableIRI, getPathURL, stripFragmentFromString, getFragmentOrLastPath, getFragmentFromString, getURLLastPath, getLastPathSegment, forceTrailingSlash, getBaseURL, getParentURLPath, encodeString, generateDataURI, getMediaTypeURIs, isHttpOrHttpsProtocol, isFileProtocol, getUrlParams, stripUrlSearchHash, stripUrlParamsFromString } from './uri.js'
+import { getProxyableIRI, getPathURL, stripFragmentFromString, getFragmentOrLastPath, getFragmentFromString, getURLLastPath, getLastPathSegment, forceTrailingSlash, getBaseURL, getParentURLPath, encodeString, generateDataURI, getMediaTypeURIs, isHttpOrHttpsProtocol, isFileProtocol, getUrlParams, stripUrlSearchHash, stripUrlParamsFromString, getAbsoluteIRI } from './uri.js'
 import { getResourceGraph, getResourceOnlyRDF, traverseRDFList, getLinkRelation, getAgentName, getGraphImage, getGraphFromData, isActorType, isActorProperty, getGraphLabel, getGraphLabelOrIRI, getGraphConceptLabel, getUserContacts, getAgentInbox, getLinkRelationFromHead, getACLResourceGraph, getAccessSubjects, getAuthorizationsMatching, getGraphRights, getGraphLicense, getGraphLanguage, getGraphDate, getGraphAuthors, getGraphEditors, getGraphContributors, getGraphPerformers, getUserLabelOrIRI, getGraphTypes, filterQuads, getAgentTypeIndex, serializeData } from './graph.js'
 import { notifyInbox, sendNotifications } from './inbox.js'
 import { uniqueArray, fragmentFromString, generateAttributeId, sortToLower, getDateTimeISO, getDateTimeISOFromMDY, generateUUID, isValidISBN, findPreviousDateTime, escapeRDFLiteral, tranformIconstoCSS, getIconsFromCurrentDocument, getHash, getDateTimeISOFromDate } from './util.js'
 import { generateGeoView } from './geo.js'
-import { getLocalStorageItem, updateLocalStorageProfile, enableAutoSave, disableAutoSave, updateLocalStorageItem, autoSave, removeLocalStorageDocumentFromCollection } from './storage.js'
+import { getLocalStorageItem, updateLocalStorageProfile, enableAutoSave, disableAutoSave, updateLocalStorageItem, autoSave, removeLocalStorageDocumentFromCollection, removeLocalStorageItem } from './storage.js'
 import { showUserSigninSignout, showUserIdentityInput, getSubjectInfo, restoreSession, afterSetUserInfo, setUserInfo, userInfoSignOut } from './auth.js'
 import { Icon } from './ui/icons.js'
 import * as d3Selection from 'd3-selection';
@@ -25,14 +25,13 @@ import LinkHeader from 'http-link-header';
 import rdf from 'rdf-ext';
 import Config from './config.js';
 import { Editor } from './editor/editor.js';
-import { initButtons, updateButtons } from './ui/buttons.js'
+import { getButtonHTML, initButtons, updateButtons } from './ui/buttons.js'
 import { csvStringToJson, jsonToHtmlTableString } from './csv.js'
 import { getMultipleResources } from './fetcher.js'
-import { domSanitize, domSanitizeHTMLBody, sanitizeObject } from './utils/sanitization.js'
-import { formatHTML, htmlEncode, tokenizeDOM } from './utils/html.js'
-import { DOMParser, DOMSerializer } from 'prosemirror-model'
-import { cleanProseMirrorOutput, normalizeForDiff, normalizeHTML } from './utils/normalization.js'
-import { schema } from './editor/schema/base.js'
+import { domSanitize, sanitizeObject } from './utils/sanitization.js'
+import { normalizeForDiff } from './utils/normalization.js'
+import { i18n, i18nextInit } from './i18n.js'
+import { htmlEncode } from './utils/html.js'
 
 const ns = Config.ns;
 let DO;
@@ -203,7 +202,7 @@ DO = {
       var showProgress = function() {
         var info = aside.querySelector('div.info');
         var progressOld = info.querySelector('.progress');
-        var progressNew = fragmentFromString(`<div class="progress">${Icon[".fas.fa-circle-notch.fa-spin.fa-fw"].replace(' fa-fw', '')} Checking activities</div>`);
+        var progressNew = fragmentFromString(`<div class="progress" data-i18n="panel.notifications.progress.checking">${Icon[".fas.fa-circle-notch.fa-spin.fa-fw"].replace(' fa-fw', '')} ${i18n.t('panel.notifications.progress.checking.textContent')}</div>`);
 
         if (progressOld) {
           info.replaceChild(progressNew, progressOld)
@@ -398,7 +397,7 @@ DO = {
 
     showActivities: function(url, options = {}) {
       if (DO.C.Activity[url] || DO.C.Notification[url]) {
-        return [];
+        return Promise.reject([]);
       }
 
       var documentURL = DO.C.DocumentURL;
@@ -408,7 +407,8 @@ DO = {
       return getResourceOnlyRDF(url)
         //TODO: Needs throws handled from functions calling showActivities
         // .catch(e => {
-        //   return [];
+        //   // return [];
+        //   throw e;
         // })
         .then(g => {
           // console.log(g)
@@ -598,7 +598,9 @@ DO = {
                       else {
                         return DO.U.showActivities(object, o)
                           .then(iri => iri)
-                          .catch(e => console.log(object + ': object is unreachable', e));
+                          .catch(e => {
+                            // console.log(object + ': object is unreachable', e)
+                          });
                       }
                     }
                   }
@@ -821,9 +823,10 @@ DO = {
       // });
       // getDocumentContentNode(document).insertAdjacentHTML('beforeend', a.join(''));
 
+      var buttonClose = getButtonHTML({ key:"dialog.graph-view.close.button", button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
 
       if (selector == '#graph-view' && !document.getElementById('graph-view')) {
-        document.body.appendChild(fragmentFromString(`<aside id="graph-view" class="do on">${DO.C.Button.Close}<h2>Graph view ${DO.C.Button.Info.GraphView}</h2><div class="info"></div></aside>`));
+        document.body.appendChild(fragmentFromString(`<aside class="do on" id="graph-view" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 data-i18n="dialog.graph-view.h2">${i18n.t('dialog.graph-view.h2.textContent')} ${DO.C.Button.Info.GraphView}</h2>${buttonClose}<div class="info"></div></aside>`));
       }
 
       var svg = d3.select(selector).append('svg')
@@ -838,7 +841,7 @@ DO = {
         .attr('typeof', 'http://purl.org/dc/dcmitype/Image')
 
       var graphView = document.querySelector(selector);
-      graphView.insertAdjacentHTML('beforeend', '<button class="export" title="Export graph as SVG">Export</button>');
+      graphView.insertAdjacentHTML('beforeend', `<button class="export" data-i18n="dialog.graph-view.export.button" title="${i18n.t('dialog.graph-view.export.button.title')}" type="button">${i18n.t('dialog.graph-view.export.button.textContent')}</button>`);
       graphView.addEventListener('click', (e) => {
         if (e.target.closest('button.export')) {
           var svgNode = graphView.querySelector('svg[typeof="http://purl.org/dc/dcmitype/Image"]');
@@ -1507,10 +1510,53 @@ DO = {
         return DO.U.getItemsList(resources, options);
       }
     },
+    handleIncomingRedirect: async function() {
+      // const params = new URLSearchParams(window.location.search);
+
+      getLocalStorageItem('DO.C.OIDC').then(OIDC => {
+        // console.log(OIDC)
+        if (OIDC?.authStartLocation && OIDC.authStartLocation !== window.location.href.split('#')[0]) {
+          var urlsHtml = `<a href="${OIDC.authStartLocation}" rel="noopener" target="_blank">${OIDC.authStartLocation}</a>`
+          var message = `Hang on tight, redirecting you to where you want to be ${urlsHtml}`;
+          var actionMessage = `Redirecting to ${urlsHtml}`;
+
+          const messageObject = {
+            'content': actionMessage,
+            'type': 'info',
+            'timer': 10000
+          }
+
+          addMessageToLog({...messageObject, content: message}, Config.MessageLog);
+          const messageId = showActionMessage(document.body, messageObject);
+
+          removeLocalStorageItem('DO.C.OIDC');
+          window.location.replace(OIDC.authStartLocation);
+        }
+        else {
+          DO.U.initAuth().then(() => DO.C.init())
+        }
+      });
+    },
 
     init: function() {
-      DO.U.initAuth()
-        .then(() => DO.C.init());
+      document.addEventListener('i18n-ready', () => {
+        DO.U.initUserLanguage().then(() => {
+          const params = new URLSearchParams(window.location.search);
+
+          if (params.has('code') && params.has('iss') && params.has('state')) {
+            DO.U.initAuth().then(() => DO.U.handleIncomingRedirect());
+          }
+          else {
+            DO.U.initAuth();
+
+            DO.C.init();
+          }
+        })
+      });
+
+      i18nextInit().then(() => {
+        document.dispatchEvent(new Event('i18n-ready'));
+      })
     },
 
     initAuth: async function() {
@@ -1537,6 +1583,15 @@ DO = {
           }
         }
       })
+    },
+
+    initUserLanguage: function() {
+      return getLocalStorageItem('i18nextLng').then(lang => {
+        lang = lang?.split('-')[0];
+        if (lang && Config.Languages[lang]) {
+          Config.User.UI['Language'] = lang;
+        }
+      });
     },
 
     getContentNode: function(node) {
@@ -2081,43 +2136,45 @@ DO = {
 
         var message = '';
         var actionMessage = '';
-        var actionTerm = 'update';
+        let errorKey = 'default';
+        let actionMessageKey = 'default-action-message';
+        // var actionTerm = 'update';
         var url = DO.C.DocumentURL;
 
         if (status != 304 && status != 404) {
           console.log(e)
           switch (status) {
             default:
-              message = `Error (${status}).`;
-              actionMessage = `Error (${status}).`;
+              message = `<code>${status}, ${e.message}</code>`;
               break;
 
             case 401:
               if (DO.C.User.IRI) {
-                message = `You do not have permission to ${actionTerm} <code>${url}</code>.`;
-                //TODO: signoutShowSignIn()
-                actionMessage = `You do not have permission to ${actionTerm} <code>${url}</code>. Try signing in with a different account.`;
+                errorKey = 'unauthorized';
+                actionMessageKey = 'unauthorized-action-message';
               }
               else {
-                message = `You are not signed in.`;
-                actionMessage = `You are not signed in. ${DO.C.Button.SignIn} and try again.`;
+                errorKey = 'unauthenticated';
+                actionMessageKey = 'unauthenticated-action-message';
               }
 
               return;
 
             case 403:
               if (DO.C.User.IRI) {
-                message = `You do not have permission to ${actionTerm} <code>${url}</code>.`;
-                //TODO: signoutShowSignIn() requestAccess()
-                actionMessage = `You do not have permission to ${actionTerm} <code>${url}</code>. Try signing in with a different account or request access.`;
+                errorKey = 'forbidden';
+                actionMessageKey = 'forbidden-action-message';
               }
               else {
-                message = `You are not signed in.`;
-                actionMessage = `You are not signed in. ${DO.C.Button.SignIn} and try again.`;
+                errorKey = 'unauthenticated';
+                actionMessageKey = 'unauthenticated-action-message';
               }
 
               return;
           }
+
+          message = message + `<span data-i18n="dialog.remote-sync.error.${errorKey}.span">${i18n.t(`dialog.remote-sync.error.${errorKey}.span.textContent`),{url,button:DO.C.Button.SignIn}}</span>`;
+          
 
           let messageObject = {
             'content': actionMessage,
@@ -2154,7 +2211,8 @@ DO = {
 
       if (options.forceLocal || options.forceRemote) {
         if (etagWasUsed && !etagsMatch && !options.forceRemote && status !== 304) {
-          reviewOptions['message'] = `Cannot force due to missing or changed ETag. Show review.`;
+          // reviewOptions['message'] = `Cannot force due to missing or changed ETag. Show review.`;
+          reviewOptions['message'] = `<span data-i18n="dialog.show-resource-review-changes.message.etag-mismatch.span">${i18n.t('dialog.show-resource-review-changes.message.etag-mismatch.span.textContent')}</span>`;
           DO.U.showResourceReviewChanges(localContent, remoteContent, response, reviewOptions);
           return;
         }
@@ -2217,7 +2275,7 @@ DO = {
         const localContentNode = tmplLocal.body;
 
         if (latestLocalDocumentItemObjectPublished.digestSRI !== remoteHash && status !== 304) {
-          reviewOptions['message'] = `Remote content has changed since your last edit and you have local unpublished changes.`;
+          reviewOptions['message'] = `<span data-i18n="dialog.show-resource-review-changes.message.conflict.span">${i18n.t('dialog.show-resource-review-changes.message.conflict.span.textContent')}</span>`;
           DO.U.showResourceReviewChanges(localContent, remoteContent, DO.C.Resource[DO.C.DocumentURL].response, reviewOptions);
           return;
         }
@@ -2258,9 +2316,9 @@ DO = {
               };
             }
             else {
-              reviewOptions['message'] = `Local unpublished changes. Remote changed. Review changes.`;
+              reviewOptions['message'] = `<span data-i18n="dialog.show-resource-review-changes.message.local-remote-changed.span">${i18n.t('dialog.show-resource-review-changes.message.local-remote-changed.span.textContent')}</span>`;
               console.log(reviewOptions['message'])
-              console.log(localContent, remoteContent)
+              // console.log(localContent, remoteContent)
               DO.U.showResourceReviewChanges(localContent, remoteContent, response, reviewOptions);
             }
           }
@@ -2274,7 +2332,7 @@ DO = {
             updateResourceInfos(DO.C.DocumentURL, null, response);
           }
           else {
-            reviewOptions['message'] = `No local unpublished changes. Remote unchanged. Review changes.`;
+            reviewOptions['message'] = `<span data-i18n="dialog.show-resource-review-changes.message.remote-changed.span">${i18n.t('dialog.show-resource-review-changes.message.remote-changed.span.textContent')}</span>`;
             DO.U.syncLocalRemoteResource();
           }
 
@@ -2366,7 +2424,7 @@ DO = {
       updateResourceInfos(DO.C.DocumentURL, content, response, { preserveHeaders: ['wac-allow'] });
     },
 
-    showResourceReviewChanges: function(localContent, remoteContent, response, reviewOptions) {      
+    showResourceReviewChanges: function(localContent, remoteContent, response, reviewOptions) {
       if (!localContent.length || !remoteContent.length) return;
       var tmplLocal = document.implementation.createHTMLDocument('template');
       tmplLocal.documentElement.setHTMLUnsafe(localContent);
@@ -2409,7 +2467,7 @@ DO = {
       
       // const diff = diffArrays(remoteTokens, localTokens).filter(d => d.added || d.removed);
       const diff = diffArrays(remoteTokens, localTokens)
-      console.log(diff)
+      // console.log(diff)
       // const diff = diffArrays(remoteSerialized, localSerialized);
 
       if (!diff.length || !diff.filter(d => d.added || d.removed).length) return;
@@ -2428,7 +2486,9 @@ DO = {
         message = `<p>${reviewOptions?.message}</p>`;
       }
 
-      document.body.appendChild(fragmentFromString(`<aside id="review-changes" class="do on">${DO.C.Button.Close}<h2>Review Changes ${DO.C.Button.Info.ReviewChanges}</h2><div class="info">${message}</div></aside>`));
+      var buttonClose = getButtonHTML({ button: 'close', buttonClass: 'close', buttonLabel: 'Close Review Changes', buttonTitle: 'Close', iconSize: 'fa-2x' });
+
+      document.body.appendChild(fragmentFromString(`<aside aria-labelledby="review-changes-label" class="do on" id="review-changes" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 id="review-changes-label">Review Changes ${DO.C.Button.Info.ReviewChanges}</h2>${buttonClose}<div class="info">${message}</div></aside>`));
 
       let insCounter = 0;
       let delCounter = 0;
@@ -2493,13 +2553,13 @@ DO = {
 
       var node = document.getElementById('review-changes');
 
-      node.querySelector('h2 + div.info').insertAdjacentHTML('beforeend', detailsInsDel);
+      node.querySelector('div.info').insertAdjacentHTML('beforeend', detailsInsDel);
 
       node.insertAdjacentHTML('beforeend', `
         <div class="do-diff">${diffHTML.join('')}</div>
-        <button class="review-changes-save-local" title="Keep my edits">Keep my changes</button>
-        <button class="review-changes-save-remote" title="Discard my edits and use remote version">Overwrite my changes</button>
-        <button class="review-changes-submit" title="Edit changes and apply them to both local and remote">Save</button>
+        <button class="review-changes-save-local" title="Keep my edits" type="button">Keep my changes</button>
+        <button class="review-changes-save-remote" title="Discard my edits and use remote version" type="button">Overwrite my changes</button>
+        <button class="review-changes-submit" title="Edit changes and apply them to both local and remote" type="submit">Save</button>
       `);
 
       const diffNode = document.querySelector('#review-changes .do-diff');
@@ -2553,8 +2613,8 @@ DO = {
       });
     },
 
-    showDocumentInfo: function() {
-      document.body.prepend(fragmentFromString(`<div class="do" id="document-menu">${DO.C.Button.OpenMenu}<div><section id="user-info"></section></div></div>`));
+    initDocumentMenu: function() {
+      document.body.prepend(fragmentFromString(`<div class="do" id="document-menu" lang="${i18n.language()}" xml:lang="${i18n.language()}">${DO.C.Button.Menu.OpenMenu}<div><section id="user-info"></section></div></div>`));
 
       var userInfo = document.getElementById('user-info');
 
@@ -2584,7 +2644,7 @@ DO = {
       var dMenu = document.querySelector('#document-menu.do');
 
       if (!dMenu) {
-        DO.U.showDocumentInfo();
+        DO.U.initDocumentMenu();
         DO.U.showDocumentMenu();
         return;
       }
@@ -2593,9 +2653,10 @@ DO = {
       var dUserInfo = dMenu.querySelector('#user-info');
       var dInfo = dMenu.querySelector('div');
 
-      dMenuButton.parentNode.replaceChild(fragmentFromString(DO.C.Button.CloseMenu), dMenuButton);
+      dMenuButton.parentNode.replaceChild(fragmentFromString(DO.C.Button.Menu.CloseMenu), dMenuButton);
       dMenu.classList.add('on');
 
+      DO.U.showLanguages(dInfo)
       showUserSigninSignout(dUserInfo);
       DO.U.showDocumentDo(dInfo);
       DO.U.showAutoSave(dInfo);
@@ -2603,9 +2664,6 @@ DO = {
       DO.U.showAboutDokieli(dInfo);
 
       var body = getDocumentContentNode(document);
-      if(!body.classList.contains('on-slideshow')) {
-        DO.U.showDocumentItems();
-      }
 
       var options = { 'reuse': true };
       if (document.location.protocol.startsWith('http')) {
@@ -2620,7 +2678,7 @@ DO = {
 
       var dMenu = document.querySelector('#document-menu.do');
       var dMenuButton = dMenu.querySelector('button');
-      dMenuButton.parentNode.replaceChild(fragmentFromString(DO.C.Button.OpenMenu), dMenuButton);
+      dMenuButton.parentNode.replaceChild(fragmentFromString(DO.C.Button.Menu.OpenMenu), dMenuButton);
 
       dMenu.classList.remove('on');
       // var sections = dMenu.querySelectorAll('section');
@@ -2647,9 +2705,10 @@ DO = {
       checked = (checked && hasAccessModeWrite) ? ' checked=""' : '';
 
       let html = `
-      <section id="document-autosave">
-        <h2>Autosave</h2>
-        <label for="autosave-remote">Autosave</label> <input${checked} id="autosave-remote" title="Keep changes local or sync to remote storage" type="checkbox" />
+      <section aria-labelledby="document-autosave-label" id="document-autosave">
+        <h2 data-i18n="menu.autosave.h2" id="document-autosave-label">${i18n.t('menu.autosave.h2.textContent')}</h2>
+        <input${checked} data-i18n="menu.autosave.input" id="autosave-remote" title="${i18n.t('menu.autosave.input.title')}" type="checkbox" />
+        <label data-i18n="menu.autosave.label" for="autosave-remote"><span data-i18n="menu.autosave.label.span">${i18n.t('menu.autosave.label.span.textContent')}</span></label> 
       </section>
       `;
 
@@ -2666,14 +2725,123 @@ DO = {
 
     },
 
+    showLanguages: function(node) {
+      if (document.getElementById('ui-language')) {
+        return;
+      }
+
+      let options = [];
+
+      const currentLanguage = i18n.language(); // detected or set language
+
+      Config.Translations.forEach(lang => {
+        let selected = (lang == currentLanguage) ? ' selected="selected"' : '';
+
+        let label = Config.Languages[lang];
+
+        if (!label && lang.includes('-')) {
+          // Fallback to main tag
+          let mainTag = lang.split('-')[0];
+          label = Config.Languages[mainTag];
+        }
+
+        if (lang !== 'dev' && label) {
+          options.push(`<option lang="${lang}"${selected} value="${lang}" xml:lang="${lang}">${label}</option>`);
+        }
+      })
+
+      const html = `
+        <section aria-labelledby="ui-language-label" id="ui-language">
+          <h2 data-i18n="language.label" id="ui-language-label">${i18n.t('language.label.textContent')}</h2>
+          ${Icon['.fas.fa-language']}
+          <label id="ui-language-select-label" for="ui-language-select" data-i18n="menu.ui-language-select.label">${i18n.t('menu.ui-language-select.label.textContent')}</label>
+          <select aria-labelledby="ui-language-select-label" id="ui-language-select">
+            ${options.join('')}
+          </select>
+        </section>`;
+
+      node.insertAdjacentHTML('afterbegin', html);
+
+      const select = document.getElementById('ui-language-select');
+
+      select.addEventListener('change', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        i18n.changeLanguage(e.target.value, (err) => {
+          if (err) return console.error('Error loading language', err);
+
+          Config.User.UI['Language'] = e.target.value;
+
+          document.querySelectorAll('.do[lang]').forEach(el => {
+            el.setAttribute('lang', e.target.value);
+            el.setAttribute('xml:lang', e.target.value);
+          })
+
+          document.querySelectorAll('.do select[name$="-language"]').forEach(el => {
+            el.value = e.target.value;
+          })
+
+          document.querySelectorAll('[data-i18n]:not(.ProseMirror [data-i18n]').forEach(el => {
+            const baseKey = el.dataset.i18n;
+
+            //TODO: Revisit updating text
+
+            // Update textContent
+            const textKey = `${baseKey}.textContent`;
+            const textValue = i18n.t(textKey);
+            if (textValue !== textKey) {
+              const span = el.querySelector(':scope > span');
+              if (span) {
+                span.textContent = textValue;
+              } else {
+                [...el.childNodes].forEach(node => {
+                  if (node.nodeType === Node.TEXT_NODE && node.nodeValue.trim()) {
+                    node.nodeValue = textValue;
+                  }
+                });
+              }
+            }
+
+            // Update innerHTML
+            const htmlKey = `${baseKey}.innerHTML`;
+
+            // TODO: move to a standalone function - this takes the variable names from data-i18n- suffix and passes them as a vars object to the i18n fn
+            const vars = {};
+            Object.entries(el.dataset).forEach(([name, value]) => {
+              if (name !== 'i18n') {
+                vars[name.replace(/^i18n/, '').toLowerCase()] = value;
+              }
+            });
+
+            const translated = i18n.t(htmlKey, vars);
+
+            if (translated !== htmlKey) {
+              el.setHTMLUnsafe(domSanitize(translated));
+            }
+
+            // Update attributes
+            [...el.attributes].forEach(attr => {
+              if (attr.name === 'data-i18n') return;
+              const attrKey = `${baseKey}.${attr.name}`;
+              const value = i18n.t(attrKey);
+              if (value !== attrKey) {
+                el.setAttribute(attr.name, value);
+              }
+            });
+          });
+        });
+      });
+    },
+
     showAboutDokieli: function(node) {
       if (document.querySelector('#about-dokieli')) { return; }
 
       const html = `
       <section id="about-dokieli">
         <dl>
-          <dt>About</dt>
-          <dd><img alt="" height="16" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAAn1BMVEUAAAAAjwAAkAAAjwAAjwAAjwAAjwAAjwAAkAAAdwAAjwAAjQAAcAAAjwAAjwAAiQAAjwAAjAAAjwAAjwAAjwAAjwAAkAAAjwAAjwAAjwAAjQAAjQAAhQAAhQAAkAAAkAAAkAAAjgAAjwAAiQAAhAAAkAAAjwAAjwAAkAAAjwAAjgAAjgAAjQAAjwAAjQAAjwAAkAAAjwAAjQAAiwAAkABp3EJyAAAANHRSTlMA+fH89enaabMF4iADxJ4SiSa+uXztyoNvQDcsDgvl3pRiXBcH1M+ppJlWUUpFMq6OdjwbMc1+ZgAABAhJREFUeNrt29nSmkAQBeAGZBMUxH3f993/vP+zJZVKVZKCRhibyc3/XVt6SimYPjPSt28Vmt5W/fu2T/9B9HIf7Tp+0RsgDC6DY6OLvzxJj8341DnsakgZUNUmo2XsORYYS6rOeugukhnyragiq56JIs5UEQ/FXKgidRTzompEKOhG1biioDFV44mCAqrGAQWtqRptA8VMqCpR6zpo9iy84VO1opWHPBZVb9QAzyQN/D1YNungJ+DMSYsbOFvSIwGjR3p0wGiQHkMw2qRHC4w76RGBcSA9NmAcSY8QjAdpYiFbTJoYyNYnTWrI1iFNusj2JE1sZBuQJtyE5pImc3Y21cRhZ1NNtsh2Ik127HCsSY8djjVpINuVhPnjVefobee2adXqu2S/6FyivABDEjQ9Lxo1pDlNd5wg24ikRK5ngKGhHhg1DSgZk4RrD6pa9LlRAnUBfWp6xCe+6EOvOT6yrmrigZaCZHPAp6b0gaiBFKvRd0/D1rr1OrvxDqiyoZmmPt9onib0t/VybyEXqdu0Cw16rUNVAfZFlzdjr5KOaoAUK6JsrgWGQapuBlIS4gy70gEmTrk1fuAgU40UxWXv6wvZAC2Dqfx0BfBK1z1H0aJ0WH7Ub4oG8JDlpBCgK1l5tSjHQSoAf0HVfMqxF+yqpzVk2ZGuAGdk8ijPHZlmpOCg0vh5cgE2JtN3qQSoU3lXpbKlLRegrzTpt+U2TNpKY2YiFiA0kS1Q6QccweZ/oinASm2B3RML0AGDNAU4qq3udmIXYVttD3YrFsBR24N1xG5EJpTeaiYWwILS5WRKBfChFsCSehpOwKi/yS0V4AsMWym3TWUFgMqIsRYL8AVOSDlaYgEitbZnDKll+UatchyJBSC1c3lDuQA2VHYAL3KneHpgLCjHSS7AHYyEciwh1g88wDB94rlyAVxwhsR7ygW4gRMTry8XwDdUDkXFgjVdD5wRsRaCAWJwPGI1Baval8Ie3Hqn8AjjhHbZr2DzrInumDTBGlCG8xy8QPY3MNLX4TiRP1q+BWs2pn9ECwu5+qTABc+80h++28UbTkjlTW3wrM6Ufrtu8d5J9Svg1Vch/RTcUYQdUHm+g1z1x2gSGyjGGVN5F7xjoTCjE0ndC3jJMzfCftmiciZ1lNGe3vCGufOWVMLIQHHehi3X1O8JJxR236SalUzninbu937BlwfV/I3k4KdGk2xm+MHuLa8Z0i9TC280qLRrF+8cw9RSjrOg8oIG8j2YgULsbGPomsgR0x9nsOzkOLh+kZr1owZGbfC2JJl78fIV0Wei/gxZDl85XWVtt++cxhuSEQ6bdfzLjlvM86PbaD4vQUjSglV8385My7CdXtO9+ZSyrLcf7nBN376V8gMpRztyq6RXYQAAAABJRU5ErkJggg==" width="16" /><a href="https://dokie.li/" rel="noopener" target="_blank">dokieli</a> is an ${Icon[".fab.fa-osi"]} <a href="https://git.dokie.li/" rel="noopener" target="_blank">open source</a> project. There is ${Icon[".fas.fa-flask"]} <a href="https://dokie.li/docs" rel="noopener" target="_blank">documentation</a> and public ${Icon[".fas.fa-comments"]} <a href="https://matrix.to/#/%23dokieli:matrix.org" rel="noopener" target="_blank">chat</a>. Made with fun.</dd>
+          <dt data-i18n="menu.about-dokieli.dt">${i18n.t('menu.about-dokieli.dt.textContent')}</dt>
+          <dd data-i18n="menu.about-dokieli.dd"><img alt="" height="16" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAAn1BMVEUAAAAAjwAAkAAAjwAAjwAAjwAAjwAAjwAAkAAAdwAAjwAAjQAAcAAAjwAAjwAAiQAAjwAAjAAAjwAAjwAAjwAAjwAAkAAAjwAAjwAAjwAAjQAAjQAAhQAAhQAAkAAAkAAAkAAAjgAAjwAAiQAAhAAAkAAAjwAAjwAAkAAAjwAAjgAAjgAAjQAAjwAAjQAAjwAAkAAAjwAAjQAAiwAAkABp3EJyAAAANHRSTlMA+fH89enaabMF4iADxJ4SiSa+uXztyoNvQDcsDgvl3pRiXBcH1M+ppJlWUUpFMq6OdjwbMc1+ZgAABAhJREFUeNrt29nSmkAQBeAGZBMUxH3f993/vP+zJZVKVZKCRhibyc3/XVt6SimYPjPSt28Vmt5W/fu2T/9B9HIf7Tp+0RsgDC6DY6OLvzxJj8341DnsakgZUNUmo2XsORYYS6rOeugukhnyragiq56JIs5UEQ/FXKgidRTzompEKOhG1biioDFV44mCAqrGAQWtqRptA8VMqCpR6zpo9iy84VO1opWHPBZVb9QAzyQN/D1YNungJ+DMSYsbOFvSIwGjR3p0wGiQHkMw2qRHC4w76RGBcSA9NmAcSY8QjAdpYiFbTJoYyNYnTWrI1iFNusj2JE1sZBuQJtyE5pImc3Y21cRhZ1NNtsh2Ik127HCsSY8djjVpINuVhPnjVefobee2adXqu2S/6FyivABDEjQ9Lxo1pDlNd5wg24ikRK5ngKGhHhg1DSgZk4RrD6pa9LlRAnUBfWp6xCe+6EOvOT6yrmrigZaCZHPAp6b0gaiBFKvRd0/D1rr1OrvxDqiyoZmmPt9onib0t/VybyEXqdu0Cw16rUNVAfZFlzdjr5KOaoAUK6JsrgWGQapuBlIS4gy70gEmTrk1fuAgU40UxWXv6wvZAC2Dqfx0BfBK1z1H0aJ0WH7Ub4oG8JDlpBCgK1l5tSjHQSoAf0HVfMqxF+yqpzVk2ZGuAGdk8ijPHZlmpOCg0vh5cgE2JtN3qQSoU3lXpbKlLRegrzTpt+U2TNpKY2YiFiA0kS1Q6QccweZ/oinASm2B3RML0AGDNAU4qq3udmIXYVttD3YrFsBR24N1xG5EJpTeaiYWwILS5WRKBfChFsCSehpOwKi/yS0V4AsMWym3TWUFgMqIsRYL8AVOSDlaYgEitbZnDKll+UatchyJBSC1c3lDuQA2VHYAL3KneHpgLCjHSS7AHYyEciwh1g88wDB94rlyAVxwhsR7ygW4gRMTry8XwDdUDkXFgjVdD5wRsRaCAWJwPGI1Baval8Ie3Hqn8AjjhHbZr2DzrInumDTBGlCG8xy8QPY3MNLX4TiRP1q+BWs2pn9ECwu5+qTABc+80h++28UbTkjlTW3wrM6Ufrtu8d5J9Svg1Vch/RTcUYQdUHm+g1z1x2gSGyjGGVN5F7xjoTCjE0ndC3jJMzfCftmiciZ1lNGe3vCGufOWVMLIQHHehi3X1O8JJxR236SalUzninbu937BlwfV/I3k4KdGk2xm+MHuLa8Z0i9TC280qLRrF+8cw9RSjrOg8oIG8j2YgULsbGPomsgR0x9nsOzkOLh+kZr1owZGbfC2JJl78fIV0Wei/gxZDl85XWVtt++cxhuSEQ6bdfzLjlvM86PbaD4vQUjSglV8385My7CdXtO9+ZSyrLcf7nBN376V8gMpRztyq6RXYQAAAABJRU5ErkJggg==" width="16" /><span data-i18n="menu.about-dokieli.dd.span">${i18n.t("menu.about-dokieli.dd.span.innerHTML")}</span>
         </dl>
       </section>`;
 
@@ -2716,21 +2884,21 @@ DO = {
 
       var stylesheets = document.querySelectorAll('head link[rel~="stylesheet"][title]:not([href$="dokieli.css"])');
 
-      var s = '<section id="document-views"><h2>Views</h2>' + Icon[".fas.fa-magic"] + '<ul>';
+      var s = `<section aria-labelledby="document-views-label" id="document-views"><h2 data-i18n="menu.document-views.h2" id="document-views-label">${i18n.t('menu.document-views.h2.textContent')}</h2>${Icon[".fas.fa-magic"]}<ul>`;
       if (DO.C.GraphViewerAvailable) {
-        s += '<li><button class="resource-visualise" title="Change to graph view">Graph</button></li>';
+        s += `<li><button class="resource-visualise" data-i18n="menu.document-views.graph.button" title="${i18n.t('menu.document-views.graph.button.title')}">${i18n.t('menu.document-views.graph.button.textContent')}</button></li>`;
       }
-      s += '<li><button title="Change to native device/browser view">Native</button></li>';
+      s += `<li><button title="${i18n.t('menu.document-views.native.button.title')}">${i18n.t('menu.document-views.native.button.textContent')}</button></li>`;
 
       if (stylesheets.length) {
         for (var i = 0; i < stylesheets.length; i++) {
           var stylesheet = stylesheets[i];
           var view = stylesheet.getAttribute('title');
           if(stylesheet.closest('[rel~="alternate"]')) {
-            s += '<li><button title="Change to ‘' + view + '’ view">' + view + '</button></li>';
+            s += `<li><button data-i18n="menu.document-views.change-style.button" title="${i18n.t('menu.document-views.change-style.button.title', { view })}">${view}</button></li>`;
           }
           else {
-            s += '<li><button disabled="disabled" title="Current style">' + view + '</button></li>';
+            s += `<li><button data-i18n="menu.document-views.current-style.button" disabled="disabled" title="${i18n.t('menu.document-views.current-style.button.title')}">${view}</button></li>`;
           }
         }
       }
@@ -2753,7 +2921,9 @@ DO = {
               e.target.disabled = true;
             }
 
-            document.body.appendChild(fragmentFromString(`<aside id="graph-view" class="do on">${DO.C.Button.Close}<h2>Graph view ${DO.C.Button.Info.GraphView}</h2><div class="info"></div></aside>`));
+            var buttonClose = getButtonHTML({ button: 'close', buttonClass: 'close', buttonLabel: 'Close Graph View', buttonTitle: 'Close', iconSize: 'fa-2x' });
+
+            document.body.appendChild(fragmentFromString(`<aside aria-labelledby="graph-view-label" class="do on" id="graph-view" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 id="graph-view-label">Graph view ${DO.C.Button.Info.GraphView}</h2>${buttonClose}<div class="info"></div></aside>`));
 
             var graphView = document.getElementById('graph-view');
             graphView.addEventListener('click', (e) => {
@@ -2821,7 +2991,7 @@ DO = {
 
         if(dMenu) {
           var dMenuButton = dMenu.querySelector('button');
-          dMenuButton.parentNode.replaceChild(fragmentFromString(DO.C.Button.CloseMenu), dMenuButton);
+          dMenuButton.parentNode.replaceChild(fragmentFromString(DO.C.Button.Menu.CloseMenu), dMenuButton);
 
           dMenu.classList.remove('on');
 
@@ -2899,14 +3069,17 @@ DO = {
           }
         }
 
+        var buttonClose = getButtonHTML({ button: 'close', buttonClass: 'close', buttonLabel: 'Close Embed Data Entry', buttonTitle: 'Close', iconSize: 'fa-2x' });
+
         var embedMenu = `
-        <aside id="embed-data-entry" class="do on tabs">${DO.C.Button.Close}
-          <h2>Embed Data ${DO.C.Button.Info.EmbedData}</h2>
+        <aside aria-labelledby="embed-data-entry-label" class="do on tabs" id="embed-data-entry" lang="${i18n.language()}" xml:lang="${i18n.language()}">
+          <h2 id="embed-data-entry-label">Embed Data ${DO.C.Button.Info.EmbedData}</h2>
+          ${buttonClose}
           <div class="info"></div>
           <nav><ul><li class="selected"><a href="#embed-data-turtle">Turtle</a></li><li><a href="#embed-data-json-ld">JSON-LD</a></li><li><a href="#embed-data-trig">TriG</a></li></ul></nav>
-          <div id="embed-data-turtle" class="selected"><textarea placeholder="Enter data in Turtle" name="meta-turtle" cols="80" rows="24">${(scriptCurrentData['meta-turtle'] ? scriptCurrentData['meta-turtle'].content : '')}</textarea><button class="save" title="Embed data into document">Save</button></div>
-          <div id="embed-data-json-ld"><textarea placeholder="Enter data in JSON-LD" name="meta-json-ld" cols="80" rows="24">${(scriptCurrentData['meta-json-ld'] ? scriptCurrentData['meta-json-ld'].content : '')}</textarea><button class="save" title="Embed data into document">Save</button></div>
-          <div id="embed-data-trig"><textarea placeholder="Enter data in TriG" name="meta-trig" cols="80" rows="24">${(scriptCurrentData['meta-trig'] ? scriptCurrentData['meta-trig'].content : '')}</textarea><button class="save" title="Embed data into document">Save</button></div>
+          <div id="embed-data-turtle" class="selected"><textarea placeholder="Enter data in Turtle" name="meta-turtle" cols="80" rows="24">${(scriptCurrentData['meta-turtle'] ? scriptCurrentData['meta-turtle'].content : '')}</textarea><button class="save" title="Embed data into document" type="submit">Save</button></div>
+          <div id="embed-data-json-ld"><textarea placeholder="Enter data in JSON-LD" name="meta-json-ld" cols="80" rows="24">${(scriptCurrentData['meta-json-ld'] ? scriptCurrentData['meta-json-ld'].content : '')}</textarea><button class="save" title="Embed data into document" type="submit">Save</button></div>
+          <div id="embed-data-trig"><textarea placeholder="Enter data in TriG" name="meta-trig" cols="80" rows="24">${(scriptCurrentData['meta-trig'] ? scriptCurrentData['meta-trig'].content : '')}</textarea><button class="save" title="Embed data into document type="submit"">Save</button></div>
         </aside>
         `;
 
@@ -3015,15 +3188,15 @@ DO = {
       advisements = (DO.C.Resource[documentURL].spec && DO.C.Resource[documentURL].spec['advisement']) ? Object.keys(DO.C.Resource[documentURL].spec['advisement']) : [];
       skos = (DO.C.Resource[documentURL].skos) ? DO.C.Resource[documentURL].skos : [];
 
-      citations = '<tr class="citations"><th>Citations</th><td>' + citationsTo.length + '</td></tr>';
-      requirements = '<tr class="requirements"><th>Requirements</th><td>' + requirements.length + '</td></tr>';
-      advisements = '<tr class="advisements"><th>Advisements</th><td>' + advisements.length + '</td></tr>';
+      citations = `<tr class="citations"><th data-i18n="panel.document-metadata.citations.th">${i18n.t('panel.document-metadata.citations.th.textContent')}</th><td>${citationsTo.length}</td></tr>`;
+      requirements = `<tr class="requirements"><th data-i18n="panel.document-metadata.requirements.th">${i18n.t('panel.document-metadata.requirements.th.textContent')}</th><td>${requirements.length}</td></tr>`;
+      advisements = `<tr class="advisements"><th data-i18n="panel.document-metadata.advisements.th">${i18n.t('panel.document-metadata.advisements.th.textContent')}</th><td>${advisements.length}</td></tr>`;
       var conceptsList = [];
       conceptsList = (skos.type && skos.type[ns.skos.Concept.value]) ? skos.type[ns.skos.Concept.value] : conceptsList;
 
-      var concepts = '<tr class="concepts"><th>Concepts</th><td>' + conceptsList.length + '</td></tr>';
+      var concepts = `<tr class="concepts"><th data-i18n="panel.document-metadata.concepts.th">${i18n.t('panel.document-metadata.concepts.th.textContent')}</th><td>${conceptsList.length}</td></tr>`;
       // TODO: Review grapoi . Check it matches expected
-      var statements = '<tr class="statements"><th>Statements</th><td>' + g.out().terms.length + '</td></tr>';
+      var statements = `<tr class="statements"><th data-i18n="panel.document-metadata.statements.th">${i18n.t('panel.document-metadata.statements.th.textContent')}</th><td>${g.out().terms.length}</td></tr>`;
 
       var graphEditors = getGraphEditors(g);
       var graphAuthors = getGraphAuthors(g);
@@ -3038,7 +3211,7 @@ DO = {
           editors.push(`<li>${name}</li>`);
         });
         if (editors.length){
-          editors = '<tr class="people"><th>Editors</th><td><ul class="editors">' + editors.join('') + '</ul></td></tr>';
+          editors = `<tr class="people"><th data-i18n="panel.document-metadata.editors.th">${i18n.t('panel.document-metadata.editors.th.textContent')}</th><td><ul class="editors">${editors.join('')}</ul></td></tr>`;
         }
       }
 
@@ -3050,7 +3223,7 @@ DO = {
           authors.push(`<li>${name}</li>`);
         });
         if (authors.length){
-          authors = '<tr class="people"><th>Authors</th><td><ul class="authors">' + authors.join('') + '</ul></td></tr>';
+          authors = `<tr class="people"><th data-i18n="panel.document-metadata.authors.th">${i18n.t('panel.document-metadata.authors.th.textContent')}</th><td><ul class="authors">${authors.join('')}</ul></td></tr>`;
         }
       }
 
@@ -3062,7 +3235,7 @@ DO = {
           contributors.push(`<li>${name}</li>`);
         });
         if (contributors.length){
-          contributors = '<tr class="people"><th>Contributors</th><td><ul class="contributors">' + contributors.join('') + '</ul></td></tr>';
+          contributors = `<tr class="people"><th data-i18n="panel.document-metadata.contributors.th">${i18n.t('panel.document-metadata.contributors.th.textContent')}</th><td><ul class="contributors">${contributors.join('')}</ul></td></tr>`;
         }
       }
 
@@ -3074,7 +3247,7 @@ DO = {
           performers.push(`<li>${name}</li>`);
         });
         if (performers.length){
-          performers = '<tr class="people"><th>Performers</th><td><ul class="performers">' + performers.join('') + '</ul></td></tr>';
+          performers = `<tr class="people"><th>Performers</th><td><ul class="performers">${performers.join('')}</ul></td></tr>`;
         }
       }
 
@@ -3083,16 +3256,19 @@ DO = {
           // <tr><th>Lines</th><td>' + count.lines + '</td></tr>\n\
           // <tr><th>A4 Pages</th><td>' + count.pages.A4 + '</td></tr>\n\
           // <tr><th>US Letter</th><td>' + count.pages.USLetter + '</td></tr>\n\
-      var html = '<section id="document-metadata"><table>\n\
-        <caption>Document Metadata</caption>\n\
-        <tbody>\n\
-          ' + data + '\n\
-          <tr><th>Reading time</th><td>' + count.readingTime + ' minutes</td></tr>\n\
-          <tr><th>Characters</th><td>' + count.chars + '</td></tr>\n\
-          <tr><th>Words</th><td>' + count.words + '</td></tr>\n\
-          <tr><th>Bytes</th><td>' + count.bytes + '</td></tr>\n\
-        </tbody>\n\
-      </table></section>';
+      var html = `
+      <section id="document-metadata">
+        <table>
+          <caption data-i18n="panel.document-metadata.caption">${i18n.t('panel.document-metadata.caption.textContent')}</caption>
+          <tbody>
+            ${data}
+            <tr><th data-i18n="panel.document-metadata.reading-time.th">${i18n.t('panel.document-metadata.reading-time.th.textContent')}</th><td>${count.readingTime} <span data-i18n="datetime.minutes.span">${i18n.t('datetime.minutes.span.textContent')}</span></td></tr>
+            <tr><th data-i18n="panel.document-metadata.characters.th">${i18n.t('panel.document-metadata.characters.th.textContent')}</th><td>${count.chars}</td></tr>
+            <tr><th data-i18n="panel.document-metadata.words.th">${i18n.t('panel.document-metadata.words.th.textContent')}</th><td>${count.words}</td></tr>
+            <tr><th data-i18n="panel.document-metadata.bytes.th">${i18n.t('panel.document-metadata.bytes.th.textContent')}</th><td>${count.bytes}</td></tr>
+          </tbody>
+        </table>
+      </section>`;
 
       node.insertAdjacentHTML('beforeend', domSanitize(html));
     },
@@ -3141,7 +3317,7 @@ DO = {
         .then(graphs => {
 // console.log(graphs);
           graphs.forEach(g => {
-            if (g && g.out().terms.length){
+            if (g && !(g instanceof Error) && g.out().terms.length){
             // if (g) {
               var documentURL = g.term.value;
               g = rdf.grapoi({dataset: g.dataset})
@@ -3162,7 +3338,7 @@ DO = {
           });
 
           var id = 'list-of-additional-concepts';
-          html = '<section id="' + id + '"><h3>Additional Concepts</h3><div><button class="graph">View Graph</button><figure></figure>' + html.join('') + '</div></section>';
+          html = '<section id="' + id + '"><h3>Additional Concepts</h3><div><button class="graph" type="button">View Graph</button><figure></figure>' + html.join('') + '</div></section>';
 
           var aC = document.getElementById(id);
           if (aC) {
@@ -3249,7 +3425,7 @@ DO = {
                   cLabel = (cLabel.length) ? cLabel : [getFragmentOrLastPath(c)];
                   cLabel.forEach(cL => {
                     cL = cL.trim();
-                    console.log(cL)
+                    // console.log(cL)
                     s += '<li><a href="' + c + '">' + cL + '</a></li>';
                   });
                 });
@@ -3302,35 +3478,48 @@ DO = {
       waitUntil();
     },
 
-    showDocumentItems: function() {
-      var documentItems = document.getElementById('document-items');
-      if (documentItems) {
-        documentItems.parentNode.removeChild(documentItems);
+    showDocumentInfo: function(e) {
+      var documentInfo = document.getElementById('document-info');
+      if (documentInfo) {
+        documentInfo.parentNode.removeChild(documentInfo);
       }
+
+      e.target.closest('button').disabled = true
 
       var documentMenu = document.getElementById('document-menu');
 
-      document.body.insertBefore(fragmentFromString('<aside id="document-items" class="do on">' + DO.C.Button.Close + '</aside>'), documentMenu.nextSibling);
-      documentItems = document.getElementById('document-items');
+      var buttonClose = getButtonHTML({ key: 'panel.document-info.close.button', button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
+
+      document.body.insertBefore(fragmentFromString(`<aside aria-labelledby="document-info-label" class="do on" id="document-info" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 data-i88n="panel.document-info.h2" id="document-info-label">${i18n.t('panel.document-info.h2.textContent')}</h2>${buttonClose}</aside>`), documentMenu.nextSibling);
+      var documentInfo = document.getElementById('document-info');
+
+      documentInfo.setAttribute('tabindex', '-1');
+      documentInfo.focus();
+
+      documentInfo.addEventListener('click', (e) => {
+        if (e.target.closest('button.close')) {
+          document.querySelector('#document-do .document-info').disabled = false;
+        }
+      });
 
       var articleNode = selectArticleNode(document);
       var sections = articleNode.querySelectorAll('section:not(section section):not([id^=table-of]):not([id^=list-of])');
 
-      DO.U.showListOfStuff(documentItems);
+      DO.U.showListOfStuff(documentInfo);
 
-      DO.U.showHighlightStructuredData(documentItems);
+      DO.U.showHighlightStructuredData(documentInfo);
 
       if (sections.length) {
-        DO.U.showTableOfContents(documentItems, sections)
+        DO.U.showTableOfContents(documentInfo, sections)
 
         if (DO.C.SortableList && DO.C.EditorEnabled) {
           DO.U.sortToC();
         }
       }
 
-      DO.U.showDocumentMetadata(documentItems);
+      DO.U.showDocumentMetadata(documentInfo);
 
-      DO.U.showDocumentCommunicationOptions(documentItems);
+      DO.U.showDocumentCommunicationOptions(documentInfo);
     },
 
     showHighlightStructuredData: function(node) {
@@ -3339,7 +3528,7 @@ DO = {
       var contextNode = selectArticleNode(document);
       var checked = (contextNode.classList.contains('highlight-structure')) ? 'checked="checked"' : '';
 
-      var html = `<section id="highlight-data"><h2>Highlight Data</h2><ul><li><input id="highlight-structured-data" name="highlight-structured-data" type="checkbox" ${checked}/> <label for="highlight-structured-data">Structure</label></li></ul></section>`;
+      var html = `<section id="highlight-data"><h3 data-i18n="panel.higlight-data.h3">${i18n.t('panel.higlight-data.h3.textContent')}</h3><ul><li><input id="highlight-structured-data" name="highlight-structured-data" type="checkbox" ${checked}/> <label data-i18n="panel.higlight-structured-data.label" for="highlight-structured-data">${i18n.t('panel.higlight-structured-data.label.textContent')}</label></li></ul></section>`;
 
       node.insertAdjacentHTML('beforeend', html);
 
@@ -3362,13 +3551,13 @@ DO = {
       if (!node) { return; }
 
       var disabledInput = '', s = [];
-      if (!DO.C.EditorEnabled) {
-        disabledInput = ' disabled="disabled"';
-      }
+      // if (!DO.C.EditorEnabled) {
+      //   disabledInput = ' disabled="disabled"';
+      // }
 
       Object.keys(DO.C.ListOfStuff).forEach(id => {
         var checkedInput = '';
-        var label = DO.C.ListOfStuff[id].label;
+        var label = i18n.t(`panel.list-of-stuff.${id}.label.textContent`);
         var selector = DO.C.ListOfStuff[id].selector;
 
         var item = document.getElementById(id);
@@ -3379,13 +3568,13 @@ DO = {
           // DO.U.buildListOfStuff(id);
         }
 
-        s.push('<li><input id="l-o-s-' + id +'" type="checkbox"' + disabledInput + checkedInput + '/><label for="l-o-s-' + id + '">' + label + '</label></li>');
+        s.push(`<li><input id="l-o-s-${id}" type="checkbox"${disabledInput}${checkedInput} /><label data-i18n="panel.list-of-stuff.${id}.label" for="l-o-s-${id}">${label}</label></li>`);
       });
 
       if (s.length) {
-        node.insertAdjacentHTML('beforeend', '<section id="list-of-stuff"><h2>List of Stuff</h2><ul>' + s.join('') + '</ul></section>');
+        node.insertAdjacentHTML('beforeend', `<section id="list-of-stuff"><h3 data-i18n="panel.list-of-stuff.h3">${i18n.t('panel.list-of-stuff.h3.textContent')}</h3><ul>${s.join('')}</ul></section>`);
 
-        if (DO.C.EditorEnabled) {
+        // if (DO.C.EditorEnabled) {
           document.getElementById('list-of-stuff').addEventListener('click', (e) => {
             if (e.target.closest('input')) {
               var id = e.target.id.slice(6);
@@ -3406,7 +3595,7 @@ DO = {
               }
             }
           });
-        }
+        // }
       }
     },
 
@@ -3416,7 +3605,7 @@ DO = {
 
       if (!node) { return; }
 
-      var toc = '<section id="table-of-contents-i"' + sortable + '><h2>' + DO.C.ListOfStuff['table-of-contents'].label + '</h2><ol class="toc' + sortable + '">';
+      var toc = '<section id="table-of-contents-i"' + sortable + '><h3>' + DO.C.ListOfStuff['table-of-contents'].label + '</h3><ol class="toc' + sortable + '">';
       toc += DO.U.getListOfSections(sections, {'sortable': DO.C.SortableList});
       toc += '</ol></section>';
 
@@ -3507,7 +3696,7 @@ DO = {
               s += '<h2>' + label + '</h2>';
               var d = DO.C.Resource[documentURL].citations || [];
               if (d.length) {
-                s += '<div><p id="include-concepts"><button class="add">Include concepts</button> from <data value="' + d.length + '">' + d.length + '</data> external references.</p>';
+                s += '<div><p id="include-concepts"><button class="add" type="button">Include concepts</button> from <data value="' + d.length + '">' + d.length + '</data> external references.</p>';
               }
               s += '<dl>';
               break;
@@ -4092,7 +4281,9 @@ console.log(reason);
 
       var robustLinks = selector || document.querySelectorAll('cite > a[href^="http"][data-versionurl][data-versiondate]');
 
-      document.body.appendChild(fragmentFromString('<aside id="robustify-links" class="do on">' + DO.C.Button.Close + `<h2>Robustify Links  ${DO.C.Button.Info.RobustLinks}</h2>` + '<div class="info"></div><div id="robustify-links-input"><p><input id="robustify-links-select-all" type="checkbox" value="true"/><label for="robustify-links-select-all">Select all</label></p><p><input id="robustify-links-reuse" type="checkbox" value="true" checked="checked"/><label for="robustify-links-reuse">Reuse Robustifed</label></p><ul id="robustify-links-list"></ul></div><button class="robustify" title="Robustify Links">Robustify</button></aside>'));
+      var buttonClose = getButtonHTML({ button: 'close', buttonClass: 'close', buttonLabel: 'Close Robustify Links', buttonTitle: 'Close', iconSize: 'fa-2x' });
+
+      document.body.appendChild(fragmentFromString(`<aside aria-labelledby="robustify-links-label" class="do on" id="robustify-links" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 id="robustify-links-label">Robustify Links ${DO.C.Button.Info.RobustLinks}</h2>${buttonClose}<div class="info"></div><div id="robustify-links-input"><p><input id="robustify-links-select-all" type="checkbox" value="true"/><label for="robustify-links-select-all">Select all</label></p><p><input id="robustify-links-reuse" type="checkbox" value="true" checked="checked"/><label for="robustify-links-reuse">Reuse Robustifed</label></p><ul id="robustify-links-list"></ul></div><button class="robustify" title="Robustify Links" type="submit">Robustify</button></aside>`));
 
       //TODO: Move unique list of existing RL's to DO.C.Resource?
       var robustLinksUnique = {};
@@ -4534,7 +4725,10 @@ console.log(reason);
     //Derived from saveAsDocument
     generateFeed: function generateFeed (e) {
       e.target.disabled = true;
-      document.body.appendChild(fragmentFromString(`<aside id="generate-feed" class="do on">${DO.C.Button.Close}<h2>Generate Feed ${DO.C.Button.Info.GenerateFeeds}</h2><div class="info"></div></aside>`));
+
+      var buttonClose = getButtonHTML({ key: "dialog.generate-feed.close.button", button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
+
+      document.body.appendChild(fragmentFromString(`<aside aria-labelledby="generate-feed-label" class="do on" id="generate-feed" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 data-i18n="dialog.generate-feed.h2" id="generate-feed-label">${i18n.t('dialog.generate-feed.h2.textContent')} ${DO.C.Button.Info.GenerateFeeds}</h2>${buttonClose}<div class="info"></div></aside>`));
 
       var generateFeed = document.getElementById('generate-feed');
       generateFeed.addEventListener('click', (e) => {
@@ -4547,11 +4741,11 @@ console.log(reason);
 
       var id = 'location-generate-feed';
       var action = 'write';
-      generateFeed.insertAdjacentHTML('beforeend', '<fieldset id="' + id + '-fieldset"><legend>Save to</legend></fieldset>');
+      generateFeed.insertAdjacentHTML('beforeend', `<form><fieldset id="${id}-fieldset"><legend data-i18n="dialog.generate-feed.save-to.legend">${i18n.t('dialog.generate-feed.save-to.legend.textContent')}</legend></fieldset></form>`);
       fieldset = generateFeed.querySelector('fieldset#' + id + '-fieldset');
       DO.U.setupResourceBrowser(fieldset, id, action);
-      var feedTitlePlaceholder = (DO.C.User.IRI && DO.C.User.Name) ? DO.C.User.Name + "'s" : "Example's";
-      fieldset.insertAdjacentHTML('beforeend', '<p id="' + id + '-samp' + '">Feed will be generated at: <samp id="' + id + '-' + action + '"></samp></p><ul><li><label for="' + id + '-title">Title</label> <input type="text" placeholder="' + feedTitlePlaceholder + ' Web Feed" name="' + id + '-title" value=""></li><li><label for="' + id + '-language">Language</label> <select id="' + id + '-language" name="' + id + '-language">' + getLanguageOptionsHTML() + '</select></li><li><label for="' + id + '-license">License</label> <select id="' + id + '-license" name="' + id + '-license">' + getLicenseOptionsHTML() + '</select></li><li>' + DO.U.getFeedFormatSelection() + '</li></ul><button class="create" title="Save to destination">Generate</button>');
+      var feedTitlePlaceholder = (DO.C.User.IRI && DO.C.User.Name) ? DO.C.User.Name + "'s" : "Foo's";
+      fieldset.insertAdjacentHTML('beforeend', `<p data-i18n="dialog.generate-feed.generate-location.p" id="${id}-samp">${i18n.t('dialog.generate-feed.generate-location.p.textContent')} <samp id="${id}-${action}"></samp></p><ul><li><label data-i18n="dialog.generate-feed.title.label" for="${id}-title">${i18n.t('dialog.generate-feed.title.label.textContent')}</label> <input type="text" placeholder="${feedTitlePlaceholder} Web Feed" name="${id}-title" value=""></li><li><label data-i18n="language.label" for="${id}-language">${i18n.t('language.label.textContent')}</label> <select id="${id}-language" name="${id}-language">${getLanguageOptionsHTML()}</select></li><li><label data-i18n="license.label" for="${id}-license">${i18n.t('license.label.textContent')}</label> <select id="${id}-license" name="${id}-license">${getLicenseOptionsHTML()}</select></li><li>${DO.U.getFeedFormatSelection()}</li></ul><button class="create" data-i18n="dialog.generate-feed.generate.button" title="${i18n.t('dialog.generate-feed.generate.button.title')}" type="submit">${i18n.t('dialog.generate-feed.generate.button.textContent')}</button>`);
       var bli = document.getElementById(id + '-input');
       bli.focus();
       bli.placeholder = 'https://example.org/path/to/feed.xml';
@@ -4560,6 +4754,9 @@ console.log(reason);
         if (!e.target.closest('button.create')) {
           return
         }
+
+        e.preventDefault();
+        e.stopPropagation();
 
         var generateFeed = document.getElementById('generate-feed')
         var storageIRI = generateFeed.querySelector('#' + id + '-' + action).innerText.trim();
@@ -4570,10 +4767,10 @@ console.log(reason);
           rm.parentNode.removeChild(rm)
         }
 
+        // TODO: this needs to be form validation instead
         if (!isHttpOrHttpsProtocol(storageIRI) || !storageIRI.length) {
           generateFeed.insertAdjacentHTML('beforeend',
-            '<div class="response-message"><p class="error">' +
-            'Specify the location to generate the feed to.</p></div>'
+            `<div class="response-message"><p class="error" data-i18n="dialog.generate-feed.error.missing-location.p">${i18n.t("dialog.generate-feed.error.missing-location.p.textContent")}</p></div>`
           )
 
           return
@@ -4592,7 +4789,6 @@ console.log(reason);
 
         var feedLanguageSelected = generateFeed.querySelector('select[name="' + id + '-language"]').value
         var feedLicenseSelected = generateFeed.querySelector('select[name="' + id + '-license"]').value
-
 
         var feedURLSelection = [];
 
@@ -4688,16 +4884,18 @@ console.log(reason);
 
                 let url = response.url || storageIRI
 
+                // TODO: this needs to be form validation instead
                 if (!isHttpOrHttpsProtocol(url)) {
                   throw Error("Not a valid URL for value: ", url);
                 }
 
                 generateFeed.insertAdjacentHTML('beforeend',
-                  '<div class="response-message"><p class="success">' +
-                  'Document saved at <a href="' + url + '" rel="noopener" target="_blank">' + url + '</a></p></div>'
+                  `<div class="response-message"><p class="success" data-i18n="dialog.generate-feed.success.saved-at.p"><span>${i18n.t('dialog.generate-feed.success.saved-at.p.textContent')}</span> <a href="${url}" rel="noopener" target="_blank">${url}</a></p></div>`
                 )
 
-                window.open(url, '_blank')
+                setTimeout(() => {
+                  window.open(url, '_blank')
+                }, 3000)
               })
 
               //TODO: Reuse saveAsDocument's catch
@@ -4714,7 +4912,6 @@ console.log(reason);
         if(b.disabled) { return; }
         else {
           b.disabled = true;
-          DO.C.ButtonStates['resource-memento'] = false;
         }
       }
 
@@ -4754,7 +4951,8 @@ console.log(reason);
         DO.C.Button.Menu.EmbedData,
         DO.C.Button.Menu.Print,
         DO.C.Button.Menu.Delete,
-        DO.C.Button.Menu.MessageLog
+        DO.C.Button.Menu.MessageLog,
+        DO.C.Button.Menu.DocumentInfo
       ]
 
       var s = `<section id="document-do"><h2>Do</h2><ul>${buttons.map(b => `<li>${b}</li>`).join('')}</ul></section>`;
@@ -4869,6 +5067,10 @@ console.log(reason);
         if (e.target.closest('.message-log')) {
           DO.U.showMessageLog(e);
         }
+
+        if (e.target.closest('.document-info')) {
+          DO.U.showDocumentInfo(e);
+        }
       });
     },
 
@@ -4878,17 +5080,18 @@ console.log(reason);
       var messageLog;
 
       if (DO.C.MessageLog && DO.C.MessageLog.length) {
-        messageLog = '<table role="log"><caption>Messages</caption><thead><tr><th>Date/Time</th><th>Message</th><th>Type</th></tr></thead><tbody>';
+        messageLog = `<table role="log"><caption data-i18n="dialog.message-log.caption">${i18n.t('dialog.message-log.caption.textContent')}</caption><thead><tr><th data-i18n="dialog.message-log.datetime.th">${i18n.t('dialog.message-log.datetime.th.textContent')}</th><th data-i18n="dialog.message-log.message.th">${i18n.t('dialog.message-log.message.th.textContent')}</th><th data-i18n="dialog.message-log.type.th">${i18n.t('dialog.message-log.type.th.textContent')}</th></tr></thead><tbody>`;
         Object.keys(DO.C.MessageLog).forEach(i => {
-          messageLog += '<tr><td><time>' + DO.C.MessageLog[i].dateTime + '</time></td><td>' + DO.C.MessageLog[i].content + '</td><td>' + DO.C.MessageLog[i].type + '</td></tr>';
+          messageLog += `<tr><td><time>${DO.C.MessageLog[i].dateTime}</time></td><td>${DO.C.MessageLog[i].content}</td><td data-i18n="dialog.message-log.${DO.C.MessageLog[i].type}.td">${i18n.t(`dialog.message-log.${DO.C.MessageLog[i].type}.td.textContent`)}</td></tr>`;
         });
         messageLog += '</tbody></table>';
       }
       else {
-        messageLog = '<p>No messages.</p>';
+        messageLog = `<p data-i18n="dialog.message-log.no-messages.p">${i18n.t('dialog.message-log.no-messages.p.textContent')}</p>`;
       }
 
-      document.body.appendChild(fragmentFromString('<aside id="message-log" class="do on">' + DO.C.Button.Close + `<h2>Message Log ${DO.C.Button.Info.MessageLog}</h2>` + '<div class="info"></div><div>' + messageLog + '</div></aside>'));
+      var buttonClose = getButtonHTML({ key: 'dialog.message-log.close.button', button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
+      document.body.appendChild(fragmentFromString(`<aside aria-labelledby="message-log-label" class="do on" id="message-log" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 data-i18n="dialog.message-log.h2" id="message-log-label">${i18n.t('dialog.message-log.h2.textContent')} ${DO.C.Button.Info.MessageLog}</h2>${buttonClose}<div class="info"></div><div>${messageLog}</div></aside>`));
 
       document.querySelector('#message-log button.close').addEventListener('click', (e) => {
         document.querySelector('button.message-log').removeAttribute('disabled');
@@ -4901,7 +5104,9 @@ console.log(reason);
 
       e.target.closest('button').disabled = true
 
-      document.body.appendChild(fragmentFromString('<aside id="delete-document" class="do on">' + DO.C.Button.Close + `<h2>Delete ${DO.C.Button.Info.Delete}</h2>` + '<div class="info"></div><div><p>Are you sure you want to delete the following document?</p><p><code>' + url  +'</code></p></div><button class="cancel" title="Cancel delete">Cancel</button><button class="delete" title="Delete document">Delete</button></aside>'));
+      var buttonClose = getButtonHTML({ key: 'dialog.delete.close.button', button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
+
+      document.body.appendChild(fragmentFromString(`<aside aria-labelledby="delete-document-label" class="do on" id="delete-document" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 data-i18n="dialog.delete.h2" id="delete-document-label">${i18n.t('dialog.delete.h2.textContent')} ${DO.C.Button.Info.Delete}</h2>${buttonClose}<div class="info"></div><div><p data-i18n="dialog.delete.confirmation.p">${i18n.t('dialog.delete.confirmation.p.textContent')}</p><p><code>${url}</code></p></div><button class="cancel" title="${i18n.t('dialog.delete.cancel.button.title')}" type="button">${i18n.t('dialog.delete.cancel.button.textContent')}</button><button class="delete" data-i18n="dialog.delete.submit.button" title="${i18n.t('dialog.delete.submit.button.title')}" type="button">${i18n.t('dialog.delete.submit.button.textContent')}</button></aside>`));
 
       document.querySelector('#delete-document').addEventListener('click', (e) => {
         if (e.target.closest('button.info')) { return; }
@@ -4926,19 +5131,17 @@ console.log(reason);
             .then(response => {
               DO.Editor.toggleEditor('author', { template: 'new' });
 
-              var message = '';
+              var message = `<span data-i18n="dialog.delete.success.default.p">${i18n.t('dialog.delete.success.default.p.textContent', {url}) }</span>`;
               var actionMessage = '';
 
               switch(response.status) {
                 case 200: case 204: default:
-                  message = `Deleted <code>${url}</code>.`;
-                  actionMessage = `Deleted <code>${url}</code>.`;
-
+                  actionMessage = message;
                   break;
 
                 case 202:
-                  message = `Deleting <code>${url}</code> in progress.`;
-                  actionMessage = `Deleting <code>${url}</code> in progress.`;
+                  message = `<span data-i18n="dialog.delete.success.in-progress.p">${i18n.t('dialog.delete.success.default.p.textContent', {url}) }</span>`;
+                  actionMessage =  `<span data-i18n="dialog.delete.success.in-progress.p">${i18n.t('dialog.delete.success.default.p.textContent', {url}) }</span>`;
 
                   break;
               }
@@ -4962,45 +5165,48 @@ console.log(reason);
 
               var message = '';
               var actionMessage = '';
-              let actionTerm = 'delete';
+              // let actionTerm = 'delete';
+              var errorKey = 'default';
+              var actionMessageKey = 'default-action-message';
 
               if (error.status) {
                 switch(error.status) {
                   case 401:
                     if (DO.C.User.IRI) {
-                      message = `You do not have permission to ${actionTerm} <code>${url}</code>.`;
-                      //TODO: signoutShowSignIn()
-                      actionMessage = `You do not have permission to ${actionTerm} <code>${url}</code>. Try signing in with a different account.`;
+                      errorKey = 'unauthenticated';
                     }
                     else {
-                      message = `You are not signed in.`;
-                      actionMessage = `You are not signed in. ${DO.C.Button.SignIn} and try again.`;
+                      errorKey = 'unauthenticated';
+                      actionMessageKey = 'unauthenticated-action-message';
                     }
 
                     break;
 
                   case 403: default:
                     if (DO.C.User.IRI) {
-                      message = `You do not have permission to ${actionTerm} <code>${url}</code>.`;
-                      //TODO: signoutShowSignIn() requestAccess()
-                      actionMessage = `You do not have permission to ${actionTerm} <code>${url}</code>. Try signing in with a different account or request access.`;
+                      var errorKey = 'default';
+                      var actionMessageKey = 'default-action-message';
+
                     }
                     else {
-                      message += `You are not signed in.`;
-                      actionMessage = `You are not signed in. ${DO.C.Button.SignIn} and try again.`;
+                      errorKey = 'unauthenticated';
+                      actionMessageKey = 'unauthenticated-action-message';
                     }
 
                     break;
 
                   case 409:
                     //XXX: If/when there is more (structured) detail from the server, it can be processed and used here.
-
-                    message = `It was not possible to ${actionTerm} <code>${url}</code>.`;
-                    actionMessage = `It was not possible to ${actionTerm} <code>${url}</code> because something changed in the meantime. Please reload the document and try again later.`;
+                    errorKey = "conflict";
+                    actionMessageKey = "conflict-action-message";
 
                     break;
                 }
               }
+
+              message = `<span data-i18n="dialog.delete.error.${errorKey}.p">${i18n.t(`dialog.delete.error.${errorKey}.p.textContent`, {url})}</span>`
+              //TODO: signoutShowSignIn()
+              actionMessage = `<span data-i18n="dialog.delete.error.${actionMessageKey}.p">${i18n.t(`dialog.delete.error.${actionMessageKey}.p.textContent`, {url, button: DO.C.Button.SignIn})}</span>`;
 
               const messageObject = {
                 'content': actionMessage,
@@ -5058,10 +5264,28 @@ console.log(reason);
 
       e.target.closest('button').disabled = true
 
-      document.body.appendChild(fragmentFromString('<aside id="reply-to-resource" class="do on">' + DO.C.Button.Close + `<h2>Reply ${DO.C.Button.Info.Reply}</h2>` + '<div class="info"></div><div id="reply-to-resource-input"><p>Reply to <code>' +
-        iri +'</code></p><ul><li><p><label for="reply-to-resource-note">Quick reply (plain text note)</label></p><p><textarea id="reply-to-resource-note" rows="10" cols="40" name="reply-to-resource-note" placeholder="Great article!"></textarea></p></li><li><label for="reply-to-resource-language">Language</label> <select id="reply-to-resource-language" name="reply-to-resource-language">' +
-        getLanguageOptionsHTML() + '</select></li><li><label for="reply-to-resource-license">License</label> <select id="reply-to-resource-license" name="reply-to-resource-license">' +
-        getLicenseOptionsHTML() + '</select></li></ul></div>'))
+      var buttonClose = getButtonHTML({ key: 'dialog.reply-to-resource.close.button', button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
+
+      document.body.appendChild(fragmentFromString(`
+        <aside aria-labelledby="reply-to-resource-label" class="do on" id="reply-to-resource" lang="${i18n.language()}" xml:lang="${i18n.language()}">
+          <h2 data-i18n="dialog.reply-to-resource.h2" id="reply-to-resource-label">${i18n.t('dialog.reply-to-resource.h2.textContent')} ${DO.C.Button.Info.Reply}</h2>
+          ${buttonClose}
+          <div class="info"></div>
+          <div id="reply-to-resource-input">
+            <p data-i18n="dialog.reply-to-resource-input.p" data-i18n-iri="${iri}">${i18n.t('dialog.reply-to-resource-input.p.innerHTML', { iri })}</p>
+            <ul>
+              <li>
+                <p><label data-i18n="dialog.reply-to-resource-note.label" for="reply-to-resource-note">${i18n.t('dialog.reply-to-resource-note.label.textContent')}</label></p>
+                <p><textarea cols="40" data-i18n="dialog.reply-to-resource-note.textarea" id="reply-to-resource-note" rows="10" name="reply-to-resource-note" placeholder="${i18n.t('dialog.reply-to-resource-note.textarea.placeholder')}"></textarea></p>
+              </li>
+              <li>
+                <label data-i18n="language.label" for="reply-to-resource-language">${i18n.t('language.label.textContent')}</label> <select id="reply-to-resource-language" name="reply-to-resource-language">${getLanguageOptionsHTML()}</select></li>
+              <li>
+                <label data-i18n="license.label" for="reply-to-resource-license">${i18n.t('license.label.textContent')}</label> <select id="reply-to-resource-license" name="reply-to-resource-license">${getLicenseOptionsHTML()}</select>
+              </li>
+            </ul>
+          </div>
+        </aside>`))
 
       // TODO: License
       // TODO: ACL - can choose whether to make this reply private (to self), visible only to article author(s), visible to own contacts, public
@@ -5075,14 +5299,14 @@ console.log(reason);
       var noteIRI;
 
       DO.U.setupResourceBrowser(replyToResource, id, action)
-      document.getElementById(id).insertAdjacentHTML('afterbegin', '<p>Choose a location to save your reply.</p>')
+      document.getElementById(id).insertAdjacentHTML('afterbegin', `<p data-i18n="dialog.reply-to-resource.save-location-choose.p">${i18n.t('dialog.reply-to-resource.save-location-choose.p.textContent')}</p>`)
 
-      replyToResource.insertAdjacentHTML('beforeend', '<p>Your reply will be saved at <samp id="' + id +'-' + action + '"></samp></p>')
+      replyToResource.insertAdjacentHTML('beforeend', `<p data-i18n="dialog.reply-to-resource.save-location.p">${i18n.t('dialog.reply-to-resource.save-location.p.textContent')} <samp id="${id}-${action}"></samp></p>`)
 
       var bli = document.getElementById(id + '-input')
       bli.focus()
       bli.placeholder = 'https://example.org/path/to/article'
-      replyToResource.insertAdjacentHTML('beforeend', '<button class="reply" title="Send your reply">Send</button>')
+      replyToResource.insertAdjacentHTML('beforeend', `<button class="reply" data-i18n="dialog.reply-to-resource.submit.button" title="${i18n.t('dialog.reply-to-resource.submit.button.title')}" type="submit">${i18n.t('dialog.reply-to-resource.submit.button.textContent')}</button>`)
 
       replyToResource.addEventListener('click', e => {
         if (e.target.closest('button.close')) {
@@ -5108,9 +5332,10 @@ console.log(reason);
             noteIRI = noteIRI; // Keep the original value if it's not a valid URL
           }
 
+          // TODO: this needs to be form validation instead
           if (!note || !noteIRI) {
             document.querySelector('#reply-to-resource .response-message')
-              .setHTMLUnsafe(domSanitize('<p class="error">Need a note and a location to save it.</p>'));
+              .setHTMLUnsafe(domSanitize(`<p class="error" data-i18n="dialog.reply-to-resource.error.missing-note-or-location.p">${i18n.t("dialog.reply-to-resource.error.missing-note-or-location.p.textContent")}</p>`));
             return;
           }
 
@@ -5170,39 +5395,42 @@ console.log(reason);
             console.log('Could not save reply:')
             console.error(error)
 
-            let message
+            let message;
+            let errorKey = 'default';
 
             switch (error.status) {
               case 0:
               case 405:
-                message = 'this location is not writable.'
+                errorKey = 'unwritable-location';
                 break
               case 401:
-                message = 'you are not authorized.'
+                errorKey = 'unauthorized';
                 if(!DO.C.User.IRI){
-                  message += ' Try signing in.';
+                  errorKey = 'unauthenticated';
                 }
                 break;
               case 403:
-                message = 'you do not have permission to write here.'
+                errorKey = 'forbidden';
                 break
               case 406:
-                message = 'enter a name for your resource.'
+                errorKey = 'unacceptable';
                 break
               default:
                 // some other reason
-                message = error.message
                 break
             }
 
+            message = `<span data-i18n="dialog.reply-to-resource.error.${errorKey}.p">${i18n.t(`dialog.reply-to-resource.error.${errorKey}.p.textContent`)}</span>`;
+
             // re-throw, to break out of the promise chain
-            throw new Error('Cannot save your reply: ', message)
+            
+            throw new Error('Cannot save your reply: ', i18n.t(`dialog.reply-to-resource.error.${errorKey}.p.textContent`));
           })
 
           .then(response => {
             replyToResource
               .querySelector('.response-message')
-              .setHTMLUnsafe(domSanitize('<p class="success"><a href="' + response.url + '" rel="noopener" target="_blank">Reply saved!</a></p>'));
+              .setHTMLUnsafe(domSanitize(`<p class="success" data-i18n="dialog.reply-to-resource.success.saved-at.p"><span>${i18n.t('dialog.reply-to-resource.success.saved-at.p.textContent')}</span> <a href="${response.url}" rel="noopener" target="_blank">${response.url}</a></p>`));
 
             return getLinkRelation(ns.ldp.inbox.value, null, getDocument(null, documentOptions));
           })
@@ -5214,6 +5442,7 @@ console.log(reason);
 
             var inboxURL = inboxes[0]
 
+            //TODO-i18n
             let notificationStatements = '    <dl about="' + noteIRI +
               '">\n<dt>Object type</dt><dd><a about="' +
               noteIRI + '" typeof="oa:Annotation" href="' +
@@ -5241,33 +5470,33 @@ console.log(reason);
           })
 
           .then(response => {  // Success!
-            var notificationSent = 'Notification sent'
+            var notificationSent = i18n.t('dialog.reply-to-resource.success.notification-sent.p.textContent');
             var location = response.headers.get('Location')
+            var notificationLink = '';
 
             if (location) {
-              notificationSent = '<a href="' + location.trim() + '" rel="noopener" "target="_blank">' + notificationSent + '</a>!'
+              let locationUrl = getAbsoluteIRI(response.url, location.trim());
+              notificationLink = `<a href="${locationUrl}" rel="noopener" "target="_blank">${locationUrl}</a>`;
             }
-            else {
-              notificationSent = notificationSent + ", but location unknown."
-            }
+            // else {
+            //   notificationSent = notificationSent + ", but location unknown."
+            // }
 
             var responseMessage = replyToResource.querySelector('.response-message');
-            responseMessage.setHTMLUnsafe(domSanitize(responseMessage.getHTML() + '<p class="success">' + notificationSent + '</p>'));
+            responseMessage.setHTMLUnsafe(domSanitize(responseMessage.getHTML() + `<p class="success" data-i18n="dialog.reply-to-resource.success.notification-sent.p"><span>${notificationSent}</span> ${notificationLink}</p>`));
           })
 
+          //TODO-i18n
           .catch(error => {
             // Catch-all error, actually notify the user
             var responseMessage = replyToResource.querySelector('.response-message');
-            responseMessage.setHTMLUnsafe(domSanitize(responseMessage.getHTML() + '<p class="error">We could not save your reply:' + error.message + '</p>'));
-
+            responseMessage.setHTMLUnsafe(domSanitize(responseMessage.getHTML() + `<p class="error"><span data-i18n="dialog.reply-to-resource.error.save-error.span">${i18n.t('dialog.reply-to-resource.error.save-error.span.textContent')} </span> ${error.message}</p>`));
           })
       }
     },
 
     shareResource: function(listenerEvent, iri) {
       if (document.querySelector('#share-resource.do.on')) { return; }
-
-      // Config.ButtonStates['resource-share'] = false;
 
       iri = iri || currentLocation();
       const documentURL = stripFragmentFromString(iri);
@@ -5277,32 +5506,30 @@ console.log(reason);
         button.disabled = true;
       }
 
-      var addContactsButtonDisable = '', noContactsText = '';
-      if (!DO.C.User.IRI && !(DO.C.User.Graph && ((DO.C.User.Knows && DO.C.User.Knows.length) || (DO.C.User.Graph.out(ns.owl.sameAs).values.length)))) {
-        addContactsButtonDisable = ' disabled="disabled"';
-        noContactsText = '<p>Sign in to select from your list of contacts, alternatively, enter contacts individually:</p>';
-      }
-
       var shareResourceLinkedResearch = '';
       if (DO.C.User.IRI && DO.C.OriginalResourceInfo['rdftype'] && DO.C.OriginalResourceInfo.rdftype.includes(ns.schema.ScholarlyArticle.value) || DO.C.OriginalResourceInfo.rdftype.includes(ns.schema.Thesis.value)) {
         shareResourceLinkedResearch = `
           <div id="share-resource-external">
-            <h3>Share with research community</h3>
+            <h3 data-i18n="dialog.share-resource-linked-research.h3">${i18n.t('dialog.share-resource-linked-research.h3.textContent')}</h3>
             <input id="share-resource-linked-research" type="checkbox" value="https://linkedresearch.org/cloud" />
             <label for="share-resource-linked-research"><a href="https://linkedresearch.org/cloud">Linked Open Research Cloud</a></label>
           </div>`;
       }
 
+      var buttonClose = getButtonHTML({ button: 'close', buttonClass: 'close', buttonLabel: 'Close Share Resource', buttonTitle: 'Close', iconSize: 'fa-2x' });
+
       var shareResourceHTML = `
-        <aside id="share-resource" class="do on">${DO.C.Button.Close}
-          <h2>Share ${DO.C.Button.Info.Share}</h2>
-          
+        <aside aria-labelledby="share-resource-label" class="do on" id="share-resource" lang="${i18n.language()}" xml:lang="${i18n.language()}">
+          <h2 data-i18n="dialog.share.h2" id="share-resource-label">${i18n.t('dialog.share.h2.textContent')} ${DO.C.Button.Info.Share}</h2>
+
+          ${buttonClose}
+
           <div class="info"></div>
 
           <div id="share-resource-share-url">
-            <h3>Share URL</h3>
+            <h3 data-i18n="dialog.share-resource-share-url.h3">${i18n.t('dialog.share-resource-share-url.h3.textContent')}</h3>
 
-            <label for="share-resource-clipboard">Copy URL to clipboard</label>
+            <label data-i18n="dialog.share-resource-clipboard.label" for="share-resource-clipboard">${i18n.t('dialog.share-resource-clipboard.label.textContent')}</label>
             <input id="share-resource-clipboard" name="share-resource-clipboard" readonly="readonly" type="text" value="${iri}" />
             ${DO.C.Button.Clipboard}
           </div>
@@ -5310,17 +5537,17 @@ console.log(reason);
           ${shareResourceLinkedResearch}
 
           <div id="share-resource-agents">
-            <h3>Share with contacts</h3>
+            <h3 data-i18n="dialog.share-resource-agents.h3">${i18n.t('dialog.share-resource-agents.h3.textContent')}</h3>
 
             <ul>
               <li id="share-resource-address-book">
               </li>
             </ul>
 
-            <label for="share-resource-note">Note</label>
-            <textarea id="share-resource-note" rows="3" cols="40" name="share-resource-note" placeholder="Check this out!"></textarea>
+            <label data-i18n="dialog.share-resource-note.label" for="share-resource-note">${i18n.t('dialog.share-resource-note.label.textContent')}</label>
+            <textarea data-i18n="dialog.share-resource-note.textarea" id="share-resource-note" rows="3" cols="40" name="share-resource-note" placeholder="${i18n.t('dialog.share-resource-note.textarea.placeholder')}"></textarea>
 
-            <button class="share" id="share-resource-agents-button" title="Share resource">Share</button>
+            <button class="share" data-i18n="dialog.share-resource-agents.button" id="share-resource-agents-button" title="${i18n.t('dialog.share-resource-agents.button.title')}" type="submit">${i18n.t('dialog.share-resource-agents.button.textContent')}</button>
           </div>
         </aside>
       `;
@@ -5342,7 +5569,7 @@ console.log(reason);
       var li = document.getElementById('share-resource-address-book');
       li.insertAdjacentHTML('beforeend', Icon[".fas.fa-circle-notch.fa-spin.fa-fw"]);
 
-        DO.U.selectContacts(li, DO.C.User.IRI);
+      DO.U.selectContacts(li, DO.C.User.IRI);
 
       var hasAccessModeControl = accessModeAllowed(documentURL, 'control');
       if (hasAccessModeControl) {
@@ -5350,16 +5577,16 @@ console.log(reason);
 
         var shareResourcePermissions = `
           <div id="share-resource-permissions">
-            <h3>Permissions</h3>
+            <h3 data-i18n="dialog.share-resource-permissions.h3">${i18n.t('dialog.share-resource-permissions.h3.textContent')}</h3>
 
-            <span class="progress">${Icon[".fas.fa-circle-notch.fa-spin.fa-fw"]} Checking access permissions.</span>
+            <span class="progress" data-i18n="dialog.share-resource-permissions.progress">${Icon[".fas.fa-circle-notch.fa-spin.fa-fw"]} ${i18n.t('dialog.share-resource-permissions.progress.textContent')}</span>
 
             <ul class="permissions">
             </ul>
 
             <div class="autocomplete">
-              <label for="share-resource-search-contacts">Add contacts</label>
-              <input id="share-resource-search-contacts" name="share-resource-search-contacts" placeholder="Search contacts or enter WebID" type="text" value="" />
+              <label data-i18n="dialog.share-resource-search-contacts.label" for="share-resource-search-contacts">${i18n.t('dialog.share-resource-search-contacts.label.textContent')}</label>
+              <input data-i18n="dialog.share-resource-search-contacts.input" id="share-resource-search-contacts" name="share-resource-search-contacts" placeholder="${i18n.t('dialog.share-resource-search-contacts.input.placeholder')}" type="text" value="" />
               <ul class="suggestions">
               </ul>
             </div>
@@ -5373,7 +5600,7 @@ console.log(reason);
           .catch(e => {
             accessPermissionsNode.removeChild(accessPermissionFetchingIndicator);
 
-console.log('XXX: Cannot access effectiveACLResource', e);
+            console.log('XXX: Cannot access effectiveACLResource', e);
           })
           .then(aclResourceGraph => {
             accessPermissionsNode.removeChild(accessPermissionFetchingIndicator);
@@ -5533,7 +5760,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
                 })
                 .then(g => {
                   var s;
-                  if (g) {
+                  if (g && g.node) {
                     s = g.node(rdf.namedNode(accessSubject));
                   }
                   showPermissions(s, accessSubject);
@@ -5548,7 +5775,6 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
       shareResource.addEventListener('click', function (e) {
         if (e.target.closest('button.close')) {
-          // Config.ButtonStates['resource-share'] = true;
           listenerEvent.target.closest('button').disabled = false;
         }
 
@@ -5592,7 +5818,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
     //TODO: Revisit this function and addShareResourceContactInput to generalise.
     addAccessSubjectItem: function(node, s, url) {
-      var iri = s?.term.value || url;
+      var iri = s?.term?.value || url;
       iri = domSanitize(iri);
 
       var id = encodeURIComponent(iri);
@@ -5617,7 +5843,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
       const documentURL = currentLocation();
 
-      const selectNode = '<select aria-label="Change access permission" id="' + id + '">' + getAccessModeOptionsHTML({'context': options.accessContext, 'selected': options.selectedAccessMode }) + '</select>';
+      const selectNode = `<select aria-label="${i18n.t('dialog.share-resource.select-access-mode.select.aria-label')}" data-i18n="dialog.share-resource.select-access-mode.select" id="${id}">${getAccessModeOptionsHTML({'context': options.accessContext, 'selected': options.selectedAccessMode })}</select>`;
 
       node.insertAdjacentHTML('beforeend', selectNode);
 
@@ -6021,10 +6247,13 @@ console.log('XXX: Cannot access effectiveACLResource', e);
         subNode.addEventListener('click', (e) => {
           var button = e.target.closest('button');
 
-          if (button){
+          if (button && (button.classList.contains('subscribe') || button.classList.contains('unsubscribe'))) {
+            e.preventDefault();
+            e.stopPropagation();
+
             if (!(topicResource in DO.C.Subscription && 'Connection' in DO.C.Subscription[topicResource]) && button.classList.contains('subscribe')) {
               var subscription = subNode.querySelector('[rel="notify:subscription"]').getAttribute('resource');
-// console.log(DO.C.Resource[s.iri().toString()].subscription);
+              // console.log(DO.C.Resource[s.iri().toString()].subscription);
               var channelType = DO.C.Resource[topicResource]['subscription'][subscription]['channelType'];
 
               var data = {
@@ -6053,8 +6282,9 @@ console.log('XXX: Cannot access effectiveACLResource', e);
               DO.U.subscribeToNotificationChannel(subscription, data)
               .then(i => {
                 if (DO.C.Subscription[data.topic] && 'Connection' in DO.C.Subscription[data.topic]) {
-                  button.textContent = 'Unsubscribe';
+                  button.textContent = i18n.t('dialog.notification-subscriptions.unsubscribe.button.textContent');
                   button.setAttribute('class', 'unsubscribe');
+                  button.setAttribute('data-i18n', 'dialog.notification-subscriptions.unsubscribe.button');
                 }
               }).catch(e => {
                 console.log(e);
@@ -6063,8 +6293,9 @@ console.log('XXX: Cannot access effectiveACLResource', e);
             else {
               DO.C.Subscription[topicResource].Connection.close();
               DO.C.Subscription[topicResource] = {};
-              button.textContent = 'Subscribe';
+              button.textContent = i18n.t('dialog.notification-subscriptions.subscribe.button.textContent');
               button.setAttribute('class', 'subscribe');
+              button.setAttribute('data-i18n', 'dialog.notification-subscriptions.subscribe.button');
             }
           }
         });
@@ -6094,7 +6325,11 @@ console.log('XXX: Cannot access effectiveACLResource', e);
             if (sD) {
               sD.replaceChildren();
             }
-            samp.insertAdjacentHTML('afterend', '<details id="' + id + '-storage-description-details"><summary>Storage details</summary></details>');
+            const details = document.getElementById(`${id}-storage-description-details`);
+            if (details) {
+              details.remove();
+            }
+            samp.insertAdjacentHTML('afterend', `<details id="${id}-storage-description-details"><summary data-i18n="dialog.storage-details.summary">${i18n.t('dialog.storage-details.summary.textContent')}</summary></details>`);
 
             sD = document.getElementById(id + '-storage-description-details');
 
@@ -6103,7 +6338,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
                 var storageDescriptionNode = document.getElementById(id + '-storage-description');
 
                 if (!storageDescriptionNode) {
-                  var storageLocation = '<dl id="storage-location"><dt>Storage location</dt><dd><a href="' + storageUrl +'" rel="noopener" target="_blank">' + storageUrl + '</a></dd></dl>';
+                  var storageLocation = `<dl id="storage-location"><dt data-i18n="dialog.storage-location.dt">${i18n.t('dialog.storage-location.dt.textContent')}</dt><dd><a href="${storageUrl}" rel="noopener" target="_blank">${storageUrl}</a></dd></dl>`;
 
                   getResourceGraph(sDURL).then(g => {
                     if (g) {
@@ -6368,7 +6603,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
       var nSHTML = [];
 
       if (notificationSubscriptions) {
-        nSHTML.push('<dl id="notification-subscriptions-' + subjectURI + '"><dt>Notification Subscriptions</dt>');
+        nSHTML.push(`<dl id="notification-subscriptions-${subjectURI}"><dt data-i18n="dialog.notification-subscriptions.dt">${i18n.t('dialog.notification-subscriptions.dt.textContent')}</dt>`);
 
         notificationSubscriptions.forEach(subscription => {
           var nS = g.node(rdf.namedNode(subscription));
@@ -6379,32 +6614,34 @@ console.log('XXX: Cannot access effectiveACLResource', e);
           DO.C.Resource[subjectURI]['subscription'][subscription]['channelType'] = channelType;
           DO.C.Resource[subjectURI]['subscription'][subscription]['feature'] = features;
 
-          var buttonSubscribe = 'Subscribe';
+          var buttonSubscribe = i18n.t('dialog.notification-subscriptions.subscribe.button.textContent');
+          var buttonDataI18n = 'dialog.notification-subscriptions.subscribe.button';
           var buttonSubscribeClass = 'subscribe';
 
           var topicResource = subjectURI;
 
           if (DO.C.Subscription[topicResource] && DO.C.Subscription[topicResource].Connection) {
-            buttonSubscribe = 'Unsubscribe';
+            buttonSubscribe = i18n.t('dialog.notification-subscriptions.unsubscribe.button.textContent');
+            buttonDataI18n = 'dialog.notification-subscriptions.unsubscribe.button';
             buttonSubscribeClass = 'unsubscribe';
           }
 
-          nSHTML.push('<dd id="notification-subscription-' + subscription + '"><details><summary><a href="' + subscription + '" rel="noopener" target="_blank">' + subscription + '</a></summary>');
-          nSHTML.push('<dl rel="notify:subscription" resource="' + subscription + '">');
+          nSHTML.push(`<dd id="notification-subscription-${subscription}"><details><summary><a href="${subscription}" rel="noopener" target="_blank">${subscription}</a></summary>`);
+          nSHTML.push(`<dl rel="notify:subscription" resource="${subscription}">`);
           // nSHTML.push('<dt>Subscription</dt><dd><a href="' + subscription + '" rel="noopener" target="_blank">' + subscription + '</a></dd>');
 
           var topic = subjectURI;
 
           if (topic) {
-            nSHTML.push('<dt>Topic</dt><dd><a href="' + topic + '" rel="notify:topic nopener" target="_blank">' + topic + '</a> <button id="notification-subscription-' + subscription + '-button"' + ' class="' + buttonSubscribeClass + '">' + buttonSubscribe + '</button></dd>');
+            nSHTML.push(`<dt data-i18n="dialog.notification-subscriptions.topic">${i18n.t('dialog.notification-subscriptions.topic.dt.textContent')}</dt><dd><a href="${topic}" rel="notify:topic nopener" target="_blank">${topic}</a> <button data-i18n="${buttonDataI18n}" id="notification-subscription-${subscription}-button" class="${buttonSubscribeClass}">${buttonSubscribe}</button></dd>`);
           }
 
           if (channelType) {
-            nSHTML.push('<dt>Channel Type</dt><dd><a href="' + channelType + '" rel="notify:channelType noopener" target="_blank">' + channelType + '</a></dd>');
+            nSHTML.push(`<dt data-i18n="dialog.notification-subscriptions.channel-type">${i18n.t('dialog.notification-subscriptions.channel-type.dt.textContent')}</dt><dd><a href="${channelType}" rel="notify:channelType noopener" target="_blank">${channelType}</a></dd>`);
           }
 
           if (features) {
-            nSHTML.push('<dt>Features</dt><dd><ul rel="notify:feature">');
+            nSHTML.push(`<dt data-i18n="dialog.notification-subscriptions.features">${i18n.t('dialog.notification-subscriptions.features.dt.textContent')}</dt><dd><ul rel="notify:feature">`);
 
             var nF = [];
 
@@ -6733,18 +6970,24 @@ console.log('XXX: Cannot access effectiveACLResource', e);
           DO.U.generateBrowserList(g, baseUrl, id, action)
             .then(i => {
               DO.U.showStorageDescription(g, id, baseUrl);
-            });
+            })
         })
         .then(i => {
           document.getElementById(id + '-' + action).textContent = (action == 'write') ? input.value + generateAttributeId() : input.value;
         });
 
       browseButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
         DO.U.triggerBrowse(input.value, id, action);
       }, false);
 
-      if (DO.C['Session']?.isActive) {
+      if (Config['Session']?.isActive) {
         createButton.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
           DO.U.showCreateContainer(input.value, id, action, e);
         }, false);
       }
@@ -6772,7 +7015,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
         });
       }
       else{
-        inputBox.insertAdjacentHTML('beforeend', '<div class="response-message"><p class="error">This is not a valid location.</p></div>');
+        inputBox.insertAdjacentHTML('beforeend', `<div class="response-message"><p class="error" data-i18n="browser.error.invalid-location.p">${i18n.t('browser.error.invalid-location.p.textContent')}</p></div>`);
       }
     },
 
@@ -6788,7 +7031,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
         div.replaceChildren();
       }
 
-      div.insertAdjacentHTML('beforeend', '<label for="' + id + '-create-container-name">Container Name</label> <input id="' + id + '-create-container-name" name="' + id + '-create-container-name" type="text" placeholder="My Secret Stuff" /> <button class="insert" disabled="disabled">Create</button>');
+      div.insertAdjacentHTML('beforeend', `<label data-18n="browser.create-container-name.label" for="${id}-create-container-name">${i18n.t('browser.create-container-name.label.textContent')}</label> <input data-i18n="browser.create-container-name.input" id="${id}-create-container-name" name="${id}-create-container-name" type="text" placeholder="${i18n.t('browser.create-container-name.input.placeholder')}" /> <button class="insert" data-i18n="browser.create-container-name.button" disabled="disabled" title="${i18n.t('browser.create-container-name.button.title')}" type="button">${i18n.t('browser.create-container-name.button.textContent')}</button>`);
 
       var label = div.querySelector('label');
       var input = div.querySelector('input');
@@ -6820,12 +7063,13 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
         var options = { 'headers': { 'If-None-Match': '*' } };
 
+        var node = document.getElementById(id + '-create-container');
+
         patchResourceWithAcceptPatch(containerURL, patch, options).then(
           function(response){
             DO.U.triggerBrowse(containerURL, id, action);
-          },
-          function(reason) {
-            var main = '<article about=""><dl id="document-title"><dt>Title</dt><dd property="dcterms:title">' + containerLabel + '</dd></dl></article>';
+
+            var main = `      <article about=""><dl id="document-title"><dt>Title</dt><dd property="dcterms:title">${containerLabel}</dd></dl></article>`;
             var o = {
               'omitLang': true,
               'prefixes': {
@@ -6833,18 +7077,21 @@ console.log('XXX: Cannot access effectiveACLResource', e);
               }
             }
             var data = createHTML(containerLabel, main, o);
-// console.log(data);
+            // console.log(data);
 
             putResourceWithAcceptPut(containerURL, data, options).then(
               function(response){
                 DO.U.triggerBrowse(containerURL, id, action);
               },
               function(reason){
-// console.log(reason);
-                var node = document.getElementById(id + '-create-container');
+                // console.log(reason);
                 DO.U.showErrorResponseMessage(node, reason.response, 'createContainer');
               });
-          });
+          },
+          function(reason) {
+            DO.U.showErrorResponseMessage(node, reason.response, 'createContainer');
+          }
+        )
       });
     },
 
@@ -6852,7 +7099,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
       var statusCode = ('status' in response) ? response.status : 0;
       statusCode = (typeof statusCode === 'string') ? parseInt(response.slice(-3)) : statusCode;
       // console.log(statusCode);
-      console.log(response);
+      // console.log(response);
 
       var msgs = node.querySelectorAll('.response-message');
       for(var i = 0; i < msgs.length; i++){
@@ -6869,39 +7116,44 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
       var msg = '';
 
+      let errorKey = 'default';
+
       switch(statusCode) {
         default:
-          msg = 'Request unsuccessful ('+ statusText + ').';
           break;
         case 401:
-          var s = 'You are not authenticated with valid credentials.';
-          msg = (!DO.C.User.IRI) ? s + ' . Try signing in.' : s;
+          if (DO.C.User.IRI) {
+            errorKey = 'invalid-credentials';
+          } else {
+            errorKey = 'unauthenticated';
+          }
           break;
         case 403:
-          msg = 'This request is forbidden.';
+          errorKey = 'request-forbidden';
           break;
         case 404:
-          msg = 'Not found.';
+          errorKey = 'not-found';
           break;
         case 405:
-          msg = 'Request not supported on the target resource.';
+          errorKey = 'request-not-supported';
           break;
         case 409:
-          msg = 'Conflict with the current state of the target resource.';
+          errorKey = 'conflict';
           break;
         case 412:
-          msg = 'Precondition failed.';
+          errorKey = "precondition-failed";
           switch (context) {
             default:
               break;
             case 'createContainer':
-              msg += ' Use a different Container Name.';
+              errorKey = `${errorKey}-create-container-name`;
               break;
           }
-          break;
       }
 
-      node.insertAdjacentHTML('beforeend', '<div class="response-message"><p class="error">' + domSanitize(msg) + '</p></div>');
+      msg = i18n.t(`browser.error.${errorKey}.p.textContent`);
+
+      node.insertAdjacentHTML('beforeend', `<div class="response-message"><p class="error" data-i18n="browser.error.${errorKey}.p">${msg}</p></div>`);
     },
 
     setupResourceBrowser: function(parent, id, action){
@@ -6918,14 +7170,14 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
       var createContainerButton = '';
       var createContainerDiv = '';
-      if  (DO.C['Session']?.isActive) {
-        createContainerButton = ' <button id="' + id + '-create-container-button' + '" title="Create container (folder)">Create container</button>';
-        createContainerDiv = '<div id="' + id + '-create-container"></div>';
+      if (DO.C['Session']?.isActive) {
+        createContainerButton = ` <button data-i18n="browser.create-container.button" id="${id}-create-container-button" title="${i18n.t('browser.create-container.button.title')}">${i18n.t('browser.create-container.button.textContent')}</button>`;
+        createContainerDiv = `<div id="${id}-create-container"></div>`;
       }
 
-      parent.insertAdjacentHTML('beforeend', '<div id="' + id + '"><label for="' + id +'-input">URL</label> <input type="text" id="' + id +'-input" name="' + id + '-input" placeholder="https://example.org/path/to/" /><button id="' + id +'-update" disabled="disabled" title="Browse location">Browse</button>' + createContainerButton+ '</div>' + createContainerDiv + '<div id="' + id + '-listing"></div>');
+      parent.insertAdjacentHTML('beforeend', `<div id="${id}"><label for="${id}-input">URL</label> <input type="text" id="${id}-input" name="${id}-input" required placeholder="https://example.org/path/to/" /><button data-i18n="browser.browse-location.button" id="${id}-update" disabled="disabled" title="${i18n.t('browser.browse-location.button.textContent')}">${i18n.t('browser.browse-location.button.textContent')}</button>${createContainerButton}</div>${createContainerDiv}<div id="${id}-listing"></div>`);
 
-      var inputBox = document.getElementById(id);
+      // var inputBox = document.getElementById(id);
       var createContainer = document.getElementById(id + '-create-container');
       var createButton = document.getElementById(id + '-create-container-button');
       var storageBox = document.getElementById(id + '-listing');
@@ -7013,8 +7265,9 @@ console.log('XXX: Cannot access effectiveACLResource', e);
       action = action || 'write';
       action = domSanitize(id);
 
-      var browserHTML = '<aside id="resource-browser-' + id + '" class="do on">' + DO.C.Button.Close + '<h2>Resource Browser</h2></aside>';
-      document.body.appendChild(fragmentFromString(browserHTML));
+      var buttonClose = getButtonHTML({ button: 'close', buttonClass: 'close', buttonLabel: 'Close Resource Browser', buttonTitle: 'Close', iconSize: 'fa-2x' });
+
+      document.body.appendChild(fragmentFromString(`<aside aria-labelledby="resource-browser-label" class="do on" id="resource-browser-${id}" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 id="resource-browser-label">Resource Browser</h2>${buttonClose}</aside>`));
 
       DO.U.setupResourceBrowser(document.getElementById('resource-browser-' + id), id, action);
       document.getElementById('resource-browser-' + id).insertAdjacentHTML('beforeend', '<p><samp id="' + id + '-' + action + '"></samp></p>');
@@ -7072,7 +7325,10 @@ console.log('XXX: Cannot access effectiveACLResource', e);
       if(typeof e !== 'undefined') {
         e.target.disabled = true;
       }
-      document.body.insertAdjacentHTML('beforeend', '<aside id="open-document" class="do on">' + DO.C.Button.Close + `<h2>Open Document ${DO.C.Button.Info.Open}</h2><div class="info"></div><p><label for="open-local-file">Open local file</label> <input type="file" id="open-local-file" name="open-local-file" multiple="" /></p></aside>`);
+
+      var buttonClose = getButtonHTML({ key: 'dialog.open-document.close', button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
+
+      document.body.insertAdjacentHTML('beforeend', `<aside aria-labelledby="open-document-label" class="do on" id="open-document" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 data-i18n="dialog.open-document.h2" id="open-document-label">${i18n.t('dialog.open-document.h2.textContent')} ${DO.C.Button.Info.Open}</h2>${buttonClose}<div class="info"></div><p><label data-i18n="dialog.open-document.open-local-file.label" for="open-local-file">${i18n.t('dialog.open-document.open-local-file.label.textContent')}</label> <input type="file" id="open-local-file" name="open-local-file" multiple="" /></p></aside>`);
 
       var id = 'location-open-document';
       var action = 'read';
@@ -7080,7 +7336,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
       var openDocument = document.getElementById('open-document');
       DO.U.setupResourceBrowser(openDocument , id, action);
       var idSamp = (typeof DO.C.User.Storage == 'undefined') ? '' : '<p><samp id="' + id + '-' + action + '">https://example.org/path/to/article</samp></p>';
-      openDocument.insertAdjacentHTML('beforeend', idSamp + '<button class="open" title="Open document">Open</button>');
+      openDocument.insertAdjacentHTML('beforeend', `${idSamp}<button class="open" data-i18n="dialog.open-document.open.button" title="${i18n.t('dialog.open-document.open.button.title')}" type="submit">${i18n.t('dialog.open-document.open.button.textContent')}</button>`);
 
       openDocument.addEventListener('click', function (e) {
         if (e.target.closest('button.close')) {
@@ -7578,7 +7834,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
         tmplBody.setAttribute('prefix', prefixes);
 
         document.documentElement.replaceChild(tmplBody, document.body);
-        DO.U.showDocumentInfo();
+        DO.U.initDocumentMenu();
         DO.U.initEditor();
         DO.U.showFragment();
         DO.U.initCopyToClipboard();
@@ -7617,7 +7873,9 @@ console.log('XXX: Cannot access effectiveACLResource', e);
         normalize: true
       };
 
-      document.body.appendChild(fragmentFromString(`<aside id="save-as-document" class="do on">${DO.C.Button.Close}<h2>Save As ${DO.C.Button.Info.SaveAs}</h2><div class="info"></div></aside>`));
+      var buttonClose = getButtonHTML({ key: 'dialog.save-as-document.close.button', button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
+
+      document.body.appendChild(fragmentFromString(`<aside aria-labelledby="save-as-document-label" class="do on" id="save-as-document" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 data-i18n="dialog.save-as-document.h2" id="save-as-document-label">${i18n.t('dialog.save-as-document.h2.textContent')} ${DO.C.Button.Info.SaveAs}</h2>${buttonClose}<div class="info"></div></aside>`));
 
       var saveAsDocument = document.getElementById('save-as-document');
       saveAsDocument.addEventListener('click', (e) => {
@@ -7630,7 +7888,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
       var locationInboxId = 'location-inbox';
       var locationInboxAction = 'read';
-      saveAsDocument.insertAdjacentHTML('beforeend', '<div><input id="' + locationInboxId + '-set" name="' + locationInboxId + '-set" type="checkbox" /> <label for="' + locationInboxId + '-set">Set Inbox</label></div>');
+      saveAsDocument.insertAdjacentHTML('beforeend', `<div><input id="${locationInboxId}-set" name="${locationInboxId}-set" type="checkbox" /> <label data-i18n="dialog.save-as-document.set-inbox.label" for="${locationInboxId}-set">${i18n.t('dialog.save-as-document.set-inbox.label.textContent')}</label></div>`);
 
       saveAsDocument.addEventListener('click', (e) => {
         if (e.target.closest('input#' + locationInboxId + '-set')) {
@@ -7646,7 +7904,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
             e.target.nextElementSibling.insertAdjacentHTML('afterend', '<fieldset id="' + locationInboxId + '-fieldset"></fieldset>');
             fieldset = saveAsDocument.querySelector('#' + locationInboxId + '-fieldset');
             DO.U.setupResourceBrowser(fieldset, locationInboxId, locationInboxAction);
-            fieldset.insertAdjacentHTML('beforeend', '<p>Article\'s <em>inbox</em> will be set to: <samp id="' + locationInboxId + '-' + locationInboxAction + '"></samp></p>');
+            fieldset.insertAdjacentHTML('beforeend', `<p data-i18n="dialog.save-as-document.article-inbox.p">${i18n.t('dialog.save-as-document.article-inbox.p.textContent')} <samp id="${locationInboxId}-${locationInboxAction}"></samp></p>`);
             var lii = document.getElementById(locationInboxId + '-input');
             lii.focus();
             lii.placeholder = 'https://example.org/path/to/inbox/';
@@ -7656,7 +7914,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
       var locationAnnotationServiceId = 'location-annotation-service';
       var locationAnnotationServiceAction = 'read';
-      saveAsDocument.insertAdjacentHTML('beforeend', '<div><input id="' + locationAnnotationServiceId + '-set" name="' + locationAnnotationServiceId + '-set" type="checkbox" /> <label for="' + locationAnnotationServiceId + '-set">Set Annotation Service</label></div>');
+      saveAsDocument.insertAdjacentHTML('beforeend', `<div><input id="${locationAnnotationServiceId}-set" name="${locationAnnotationServiceId}-set" type="checkbox" /> <label data-i18n="dialog.save-as-document.set-annotation-service.label" for="${locationAnnotationServiceId}-set">${i18n.t('dialog.save-as-document.set-annotation-service.label.textContent')}</label></div>`);
 
       saveAsDocument.addEventListener('click', (e) => {
         if (e.target.closest('input#' + locationAnnotationServiceId + '-set')) {
@@ -7672,7 +7930,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
             e.target.nextElementSibling.insertAdjacentHTML('afterend', '<fieldset id="' + locationAnnotationServiceId + '-fieldset"></fieldset>');
             fieldset = saveAsDocument.querySelector('#' + locationAnnotationServiceId + '-fieldset');
             DO.U.setupResourceBrowser(fieldset, locationAnnotationServiceId, locationAnnotationServiceAction);
-            fieldset.insertAdjacentHTML('beforeend', '<p>Article\'s <em>annotation service</em> will be set to: <samp id="' + locationAnnotationServiceId + '-' + locationAnnotationServiceAction + '"></samp></p>');
+            fieldset.insertAdjacentHTML('beforeend', `<p data-i18n="dialog.save-as-document.article-annotation-service.p">${i18n.t('dialog.save-as-document.article-annotation-service.p.textContent')} <samp id="${locationAnnotationServiceId}-${locationAnnotationServiceAction}"></samp></p>`);
             var lasi = document.getElementById(locationAnnotationServiceId + '-input');
             lasi.focus();
             lasi.placeholder = 'https://example.org/path/to/annotation/';
@@ -7683,7 +7941,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
       //https://www.w3.org/TR/ATAG20/#gl_b31
       //TODO: Better tracking of fails so that author can correct.
-      var img = document.querySelectorAll('img');
+      var img = document.querySelectorAll('img:not(:is(.do *))');
       var imgFailed = [];
       var imgPassed = [];
       var imgCantTell = [];
@@ -7704,10 +7962,12 @@ console.log('XXX: Cannot access effectiveACLResource', e);
           }
         });
       }
-      var imgAccessibilityReport = '';
-      if (imgFailed.length || imgCantTell.length) {
-        imgAccessibilityReport += (imgFailed.length) ? '<li>Fail: Images (<code>img</code>) without alternative text (<code>alt</code>).</li>' : '';
-        imgAccessibilityReport += (imgCantTell.length) ? '<li>Can\'t Tell: Images (<code>img</code>) without a non-empty alternative text (<code>alt</code>).</li>' : '';
+      var imgAccessibilityReport = [];
+      if (imgFailed.length) {
+        imgAccessibilityReport.push(`<li data-i18n="dialog.accessibility-report.image-failed.li">${i18n.t('dialog.accessibility-report.image-failed.li.innerHTML')}</li>`);
+      }
+      if (imgCantTell.length) {
+        imgAccessibilityReport.push(`<li data-i18n="dialog.accessibility-report.image-cant-tell.li">${i18n.t('dialog.accessibility-report.image-cant-tell.li.innerHTML')}</li>`);
       }
 
       var video = document.querySelectorAll('video');
@@ -7728,9 +7988,9 @@ console.log('XXX: Cannot access effectiveACLResource', e);
           }
         });
       }
-      var videoAccessibilityReport = '';
+      var videoAccessibilityReport = [];
       if (videoFailed.length) {
-        videoAccessibilityReport += '<li>Fail: Videos (<code>video</code>) without external timed text tracks (<code>track</code> or <code>track</code> with <code>kind</code> of text track.)</li>';
+        videoAccessibilityReport.push(`<li data-i18n="dialog.accessibility-report.video-failed.li">${i18n.t('dialog.accessibility-report.video-failed.li.innerHTML')}</li>`);
       }
 
       var audio = document.querySelectorAll('audio');
@@ -7751,36 +8011,36 @@ console.log('XXX: Cannot access effectiveACLResource', e);
           }
         });
       }
-      var audioAccessibilityReport = '';
+      var audioAccessibilityReport = [];
       if (audioFailed.length) {
-        audioAccessibilityReport += '<li>Fail: Audios (<code>audio</code>) without external timed text tracks (<code>track</code> or <code>track</code> with <code>kind</code> of text track.)</li>';
+        audioAccessibilityReport.push(`<li> data-i18n="dialog.accessibility-report.audio-failed.li">${i18n.t('dialog.accessibility-report.audio-failed.li.innerHTML')}</li>`);
       }
 
-      var aRWarning = '<p>This document contains some content, e.g., images, videos, audio, that is not accompanied with alternative text or an alternative text field without information. End users with disabilities will likely experience difficulty accessing the content. Please consider adding alternative text before continuing:</p>';
-      var aRSuccess = '<p>All content in this document includes alternative text. End users with disabilities will likely have a good experience with this document.</p>';
+      var aRWarning = `<p data-i18n="dialog.accessibility-report.warning.p">${i18n.t('dialog.accessibility-report.warning.p.textContent')}</p>`;
+      var aRSuccess = `<p data-i18n="dialog.accessibility-report.success.p">${i18n.t('dialog.accessibility-report.success.p.textContent')}</p>`;
       var accessibilityReport = '';
       if (imgAccessibilityReport.length || audioAccessibilityReport.length || videoAccessibilityReport.length) {
-        accessibilityReport += aRWarning + '<ul>' + imgAccessibilityReport + audioAccessibilityReport + videoAccessibilityReport + '</ul>';
+        accessibilityReport += aRWarning + '<ul>' + imgAccessibilityReport.join('') + audioAccessibilityReport.join('') + videoAccessibilityReport.join('') + '</ul>';
       }
       else {
         accessibilityReport += aRSuccess;
       }
-      accessibilityReport = '<details id="accessibility-report-save-as"><summary>Accessibility Report</summary>' + accessibilityReport + '</details>';
+      accessibilityReport = `<details id="accessibility-report-save-as"><summary data-i18n="dialog.accessibility-report.summary">${i18n.t('dialog.accessibility-report.summary.textContent')}</summary>${accessibilityReport}</details>`;
 
       let dokielizeResource = '';
       let derivationData = '';
       
       if (!DO.Editor['new']) {
         dokielizeResource = '<li><input type="checkbox" id="dokielize-resource" name="dokielize-resource" /><label for="dokielize-resource">dokielize</label></li>';
-        derivationData = '<li><input type="checkbox" id="derivation-data" name="derivation-data" checked="checked" /><label for="derivation-data">Derivation data</label></li>'
+        derivationData = `<li><input type="checkbox" id="derivation-data" name="derivation-data" checked="checked" /><label data-i18n="dialog.save-as-document.derivation-data.label" for="derivation-data">${i18n.t('dialog.save-as-document.derivation-data.label.textContent')}</label></li>`;
       }
 
       var id = 'location-save-as';
       var action = 'write';
-      saveAsDocument.insertAdjacentHTML('beforeend', '<fieldset id="' + id + '-fieldset"><legend>Save to</legend></fieldset>');
+      saveAsDocument.insertAdjacentHTML('beforeend', `<form><fieldset id="${id}-fieldset"><legend data-i18n="dialog.save-as-document.save-to.legend">${i18n.t('dialog.save-as-document.save-to.legend.textContent')}</legend></fieldset></form>`);
       fieldset = saveAsDocument.querySelector('fieldset#' + id + '-fieldset');
       DO.U.setupResourceBrowser(fieldset, id, action);
-      fieldset.insertAdjacentHTML('beforeend', '<p id="' + id + '-samp' + '">Article will be saved at: <samp id="' + id + '-' + action + '"></samp></p>' + DO.U.getBaseURLSelection() + '<ul>' + dokielizeResource + derivationData + '</ul>' + accessibilityReport + '<button class="create" title="Save to destination">Save</button>');
+      fieldset.insertAdjacentHTML('beforeend', `<p data-i18n="dialog.save-as-document.save-location.p" id="${id}-samp">${i18n.t('dialog.save-as-document.save-location.p.textContent')} <samp id="${id}-${action}"></samp></p>${DO.U.getBaseURLSelection()}<ul>${dokielizeResource}${derivationData}</ul>${accessibilityReport}<button class="create" data-i18n="dialog.save-as-document.save.button" title="${i18n.t('dialog.save-as-document.submit.button.title')}" type="submit">${i18n.t('dialog.save-as-document.submit.button.textContent')}</button>`);
       var bli = document.getElementById(id + '-input');
       bli.focus();
       bli.placeholder = 'https://example.org/path/to/article';
@@ -7790,6 +8050,9 @@ console.log('XXX: Cannot access effectiveACLResource', e);
           return
         }
 
+        e.preventDefault();
+        e.stopPropagation();
+
         var saveAsDocument = document.getElementById('save-as-document')
         var storageIRI = saveAsDocument.querySelector('#' + id + '-' + action).innerText.trim()
 
@@ -7798,10 +8061,11 @@ console.log('XXX: Cannot access effectiveACLResource', e);
           rm.parentNode.removeChild(rm)
         }
 
+
+        // TODO: this needs to be form validation instead
         if (!storageIRI.length) {
           saveAsDocument.insertAdjacentHTML('beforeend',
-            '<div class="response-message"><p class="error">' +
-            'Specify the location to save the article to, and optionally set its <em>inbox</em> or <em>annotation service</em>.</p></div>'
+            `<div class="response-message"><p class="error" data-i18n="dialog.save-as-document.error.missing-location.p">${i18n.t("dialog.save-as-document.error.missing-location.p.textContent")}</p></div>`
           )
 
           return
@@ -7881,32 +8145,33 @@ console.log('XXX: Cannot access effectiveACLResource', e);
             // var documentMode = (DO.C.WebExtensionEnabled) ? '' : '#author=true'
 
             saveAsDocument.insertAdjacentHTML('beforeend',
-              '<div class="response-message"><p class="success">' +
-              'Document saved at <a href="' + url + '">' + url + '</a></p></div>'
+              `<div class="response-message"><p class="success" data-i18n="dialog.save-as-document.success.saved-at.p"><span>${i18n.t('dialog.save-as-document.success.saved-at.p.textContent')}</span> <a href="${url}">${url}</a></p></div>`
             )
 
             DO.C.DocumentAction = 'save-as';
 
-            if (DO.Editor['new']) {
-              //XXX: Commenting this out for now, not sure what this was supposed to fix
-              // DO.Editor.replaceContent('author', fragmentFromString(html));
-              DO.Editor['new'] = false;
-
-              var urlObject = new URL(url);
-              var documentURLObject = new URL(DO.C.DocumentURL);
-
-              if (urlObject.origin === documentURLObject.origin) {
-                window.history.pushState({}, null, url);
-                DO.U.setDocumentURL(url);
-                DO.U.hideDocumentMenu();
+            setTimeout(() => {
+              if (DO.Editor['new']) {
+                //XXX: Commenting this out for now, not sure what this was supposed to fix
+                // DO.Editor.replaceContent('author', fragmentFromString(html));
+                DO.Editor['new'] = false;
+  
+                var urlObject = new URL(url);
+                var documentURLObject = new URL(DO.C.DocumentURL);
+  
+                if (urlObject.origin === documentURLObject.origin) {
+                  window.history.pushState({}, null, url);
+                  DO.U.setDocumentURL(url);
+                  DO.U.hideDocumentMenu();
+                }
+                else {
+                  window.open(url + documentMode, '_blank');
+                }
               }
               else {
                 window.open(url + documentMode, '_blank');
               }
-            }
-            else {
-              window.open(url + documentMode, '_blank');
-            }
+            }, 3000)
           })
 
           .catch(error => {
@@ -7927,35 +8192,39 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
             if (DO.C.User.IRI && linkHeaders && linkHeaders.has('rel', ns.ldp.inbox.value)){
               inboxURL = linkHeaders.rel(ns.ldp.inbox.value)[0].uri;
-              requestAccess = '<p><button class="request-access" data-inbox="' + inboxURL +'" data-target="' + storageIRI + '" title="Send an access request to resource inbox.">Request Access</button></p>'
+              requestAccess = `<p><button class="request-access" data-i18n="dialog.save-as-document.request-access.button" data-inbox="${inboxURL}" data-target="${storageIRI}" title="${i18n.t('dialog.save-as-document.request-access.button.title')}" type="button">${i18n.t('dialog.save-as-document.request-access.button.textContent')}</button></p>`;
             }
+
+            let errorKey = 'default'
 
             switch (error.status) {
               case 0:
               case 405:
-                message = 'this location is not writable.'
+                errorKey = 'unwritable-location';
                 break
               case 401:
-                message = 'you are not authorized.'
+                errorKey = 'invalid-credentials';
                 if(!DO.C.User.IRI){
-                  message += ' Try signing in.';
+                  errorKey = 'unauthenticated';
                 }
                 break
               case 403:
-                message = 'you do not have permission to write here.'
+                errorKey = 'unauthorized';
                 break
               case 406:
-                message = 'enter a name for your resource.'
+                errorKey = 'unacceptable';
                 break
               default:
-                message = error.message
+                // message = error.message // Could not save
                 break
             }
 
+            message = i18n(`dialog.save-as-document.error.${errorKey}.p.textContent`);
+
+            //TODO:i18n
             saveAsDocument.insertAdjacentHTML('beforeend', domSanitize(
-              '<div class="response-message"><p class="error">' +
-              'Unable to save: ' + message + '</p>' + requestAccess + '</div>')
-            )
+              `<div class="response-message"><p class="error" data-i18n="dialog.save-as-document.error.${errorKey}.p">${message}</p>${requestAccess}</div>`
+            ));
 
             if (DO.C.User.IRI && requestAccess) {
               document.querySelector('#save-as-document .response-message .request-access').addEventListener('click', (e) => {
@@ -7968,8 +8237,8 @@ console.log('XXX: Cannot access effectiveACLResource', e);
                 e.target.disabled = true;
                 var responseMessage = e.target.parentNode;
                 responseMessage.insertAdjacentHTML('beforeend', domSanitize(
-                  '<span class="progress" data-to="' + inboxURL +
-                  '">' + Icon[".fas.fa-circle-notch.fa-spin.fa-fw"] + '</span>'))
+                  `<span class="progress" data-to="${inboxURL}">${Icon[".fas.fa-circle-notch.fa-spin.fa-fw"]}</span>`
+                ))
 
                 var notificationStatements = `<dl about="` + objectId + `" prefix="acl: http://www.w3.org/ns/auth/acl#">
   <dt>Object type</dt><dd><a about="` + objectId + `" href="` + ns.acl.Authorization.value + `" typeof="acl:Authorization">Authorization</a></dd>
@@ -7994,17 +8263,15 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
                     responseMessage
                       .querySelector('.progress[data-to="' + inboxURL + '"]')
-                      .setHTMLUnsafe(domSanitize(Icon[".fas.fa-times-circle.fa-fw"] + ' Unable to notify. Try later.'))
+                      .setHTMLUnsafe(domSanitize(`${Icon[".fas.fa-times-circle.fa-fw"]} <span data-i18n="dialog.save-as-document.request-access.not-notified.span">${i18n.t('dialog.save-as-document.request-access.not-notified.span.textContent')}</span>`))
                   })
                   .then(response => {
-                    var notificationSent = 'Notification sent';
+                    var notificationSent = Icon[".fas.fa-check-circle.fa-fw"];
                     var location = response.headers.get('Location');
 
                     if (location) {
-                      notificationSent = '<a href="' + location.trim() + '" rel="noopener" target="_blank">' + Icon[".fas.fa-check-circle.fa-fw"] + '</a>'
-                    }
-                    else {
-                      notificationSent = notificationSent + ", but location unknown."
+                      let locationUrl = getAbsoluteIRI(response.url, location.trim());
+                      notificationSent = `<a href="${locationUrl}" rel="noopener" "target="_blank">${Icon[".fas.fa-check-circle.fa-fw"]}</a>`;
                     }
 
                     responseMessage
@@ -8033,7 +8300,9 @@ console.log('XXX: Cannot access effectiveACLResource', e);
 
       var buttonDisabled = (document.location.protocol === 'file:') ? ' disabled="disabled"' : '';
 
-      document.body.appendChild(fragmentFromString('<aside id="source-view" class="do on">' + DO.C.Button.Close + `<h2>Source ${DO.C.Button.Info.Source}</h2>` + '<div class="info"></div><textarea id="source-edit" rows="24" cols="80"></textarea><p><button class="update"'+ buttonDisabled + ' title="Update source">Update</button></p></aside>'));
+      var buttonClose = getButtonHTML({ key: "dialog.source-view.close.button", button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
+
+      document.body.appendChild(fragmentFromString(`<aside aria-labelledby="source-view-label" class="do on" id="source-view" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 data-i18n="dialog.source-view.h2" id="source-view-label">${i18n.t('dialog.source-view.h2.textContent')} ${DO.C.Button.Info.Source}</h2>${buttonClose}<div class="info"></div><textarea id="source-edit" rows="24" cols="80"></textarea><p><button class="update" data-i18n="dialog.source-view.update.button"${buttonDisabled} title="Update source" type="submit">${i18n.t('dialog.source-view.update.button.textContent')}</button></p></aside>`));
       var sourceBox = document.getElementById('source-view');
       var input = document.getElementById('source-edit');
       input.value = getDocument(null, documentOptions);
@@ -8043,7 +8312,7 @@ console.log('XXX: Cannot access effectiveACLResource', e);
           var data = document.getElementById('source-edit').value;
           //FIXME: dokieli related stuff may be getting repainted / updated in the DOM
           document.documentElement.setHTMLUnsafe(domSanitize(data));
-          DO.U.showDocumentInfo();
+          DO.U.initDocumentMenu();
           DO.U.showDocumentMenu(e);
           DO.U.viewSource();
           document.querySelector('#document-do .resource-source').disabled = true;
@@ -8058,10 +8327,10 @@ console.log('XXX: Cannot access effectiveACLResource', e);
     getFeedFormatSelection: function() {
       return `
         <div id="feed-format-selection">
-          <label for="feed-format">Format:</label>
+          <label data-i18n="dialog.generate-feed.feed-format.label" for="feed-format">${i18n.t('dialog.generate-feed.feed-format.label.textContent')}</label>
           <select id="feed-format">
-            <option id="feed-format-atom" value="application/atom+xml">Atom</option>
-            <option id="feed-format-rss" value="application/rss+xml" selected="selected">RSS</option>
+            <option id="feed-format-atom" lang="en" value="application/atom+xml" xml:lang="en">Atom</option>
+            <option id="feed-format-rss" lang="en" value="application/rss+xml" selected="selected" xml:lang="en">RSS</option>
           </select>
         </div>
       `;
@@ -8070,10 +8339,10 @@ console.log('XXX: Cannot access effectiveACLResource', e);
     getBaseURLSelection: function() {
       return `
         <div id="base-url-selection">
-          <label for="base-url">Location of media resources:</label>
+          <label data-i18n="dialog.base-url-selection.label" for="base-url">${i18n.t('dialog.base-url-selection.label.textContent')}</label>
           <select id="base-url">
-            <option id="base-url-relative" value="base-url-relative" selected="selected">Copy to your storage</option>
-            <option id="base-url-absolute" value="base-url-absolute">Use references as is</option>
+            <option data-i18n="dialog.base-url-relative.option" id="base-url-relative" value="base-url-relative" selected="selected">${i18n.t('dialog.base-url-relative.option.textContent')}</option>
+            <option data-i18n="dialog.base-url-absolute.option" id="base-url-absolute" value="base-url-absolute">${i18n.t('dialog.base-url-absolute.option.textContent')}</option>
           </select>
         </div>
       `;
@@ -9407,7 +9676,7 @@ WHERE {\n\
     initializeButtonMore: function(node) {
       var info = node.querySelector('div.info');
       var progressOld = info.querySelector('.progress');
-      var progressNew = fragmentFromString('<div class="progress">' + DO.C.Button.More + ' See more interactions with this document</div>');
+      var progressNew = fragmentFromString(`<div class="progress" data-i18n="panel.notifications.progress.more">${DO.C.Button.Notifications.More} ${i18n.t('panel.notifications.progress.more.textContent')}</div>`);
 
       if (progressOld) {
         info.replaceChild(progressNew, progressOld)
@@ -9430,13 +9699,15 @@ WHERE {\n\
     },
 
     initializeNotifications: function(options = {}) {
-      var contextNode = selectArticleNode(document);
+      // var contextNode = selectArticleNode(document);
       // <p class="count"><data about="" datatype="xsd:nonNegativeInteger" property="sioc:num_replies" value="' + interactionsCount + '">' + interactionsCount + '</data> interactions</p>
       //<progress min="0" max="100" value="0"></progress>
       //<div class="actions"><a href="/docs#resource-activities" rel="noopener" target="_blank">${Icon[".fas.fa-circle-info"]}</a></div>
 
+      var buttonToggle = getButtonHTML({ key: 'panel.notifications.toggle.button', button: 'toggle', buttonClass: 'toggle' })
+
       //TEMP buttonRel/Resource
-      var aside = `<aside class="do" contenteditable="false" id="document-notifications">${DO.C.Button.Toggle}<h2>Notifications ${DO.C.Button.Info.Notifications}</h2><div><div class="info"></div><ul class="activities"></ul></div></aside>`;
+      var aside = `<aside aria-labelledby="document-notifications-label" class="do" contenteditable="false" id="document-notifications" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 data-i18n="panel.notifications.h2" id="document-notifications-label">${i18n.t('panel.notifications.h2.textContent')} ${DO.C.Button.Info.Notifications}</h2>${buttonToggle}<div><div class="info"></div><ul class="activities"></ul></div></aside>`;
       document.body.insertAdjacentHTML('beforeend', aside);
       aside = document.getElementById('document-notifications');
 

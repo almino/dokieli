@@ -1,10 +1,6 @@
 import rdf from 'rdf-ext';
 import DO from './dokieli.js';
 
-/**
- * Configuration
- */
-
 export default {
   init: function(url) {
     DO.U.initServiceWorker();
@@ -21,7 +17,7 @@ export default {
       DO.U.highlightItems();
       DO.U.showAsTabs();
       DO.U.initDocumentActions();
-      DO.U.showDocumentInfo();
+      DO.U.initDocumentMenu();
       DO.U.setDocRefType();
       DO.U.initCurrentStylesheet();
       DO.U.showFragment();
@@ -32,6 +28,7 @@ export default {
       DO.U.monitorNetworkStatus();
     }
   },
+  OIDC: {},
   DocumentAction: '',
   Button: {},
   DocumentURL: '',
@@ -86,14 +83,7 @@ export default {
   Editor: {
     headings: ["h1", "h2", "h3", "h4", "h5", "h6"],
     regexEmptyHTMLTags: /<[^\/>][^>]*><\/[^>]+>/gim,
-    mode: 'social',
-    Placeholder: {
-      h1: 'Title',
-      h2: 'Section title',
-      h3: 'Sub-section title',
-      h4: 'Sub-sub-section title',
-      p: 'Cogito, ergo sum.'
-    },
+    mode: 'social'
   },
 
   DOMProcessing: {
@@ -106,7 +96,7 @@ export default {
     'multiTermAttributes': ['prefix', 'property', 'rel', 'resource', 'rev', 'typeof'],
     'sortAttributes': true,
     'removeAttributes': ['contenteditable', 'data-placeholder', 'draggable', 'spellcheck', 'style'],
-    'removeCommentNodes': true,
+    'removeCommentNodes': false,
     'removeNodesWithSelector': ['.do', '.ProseMirror-trailingBreak'],
     'removeClassValues': [],
     'removeWrapper': [{
@@ -205,7 +195,7 @@ export default {
 
   DocumentDoItems: [
     'create-new-document',
-    'document-items',
+    'document-info',
     'embed-data-entry',
     'generate-feed',
     'graph-view',
@@ -283,32 +273,32 @@ export default {
   ContextLength: 32,
   NotificationLicense: 'https://creativecommons.org/publicdomain/zero/1.0/',
   License: {
-    "https://creativecommons.org/publicdomain/zero/1.0/": {'name': 'CC0 1.0', 'description': 'Creative Commons CC0 1.0 Universal'},
-    "https://creativecommons.org/licenses/by/4.0/": {'name': 'CC BY 4.0', 'description': 'Creative Commons Attribution 4.0 International'},
-    "https://creativecommons.org/licenses/by-sa/4.0/": {'name': 'CC BY-SA 4.0', 'description': 'Creative Commons Attribution-ShareAlike 4.0 International'},
-    "https://creativecommons.org/licenses/by-nc/4.0/": {'name': 'CC BY-NC 4.0', 'description': 'Creative Commons Attribution-NonCommercial 4.0 International'},
-    "https://creativecommons.org/licenses/by-nd/4.0/": {'name': 'CC BY-ND 4.0', 'description': 'Creative Commons Attribution-NoDerivatives 4.0 International'},
-    "https://creativecommons.org/licenses/by-nc-sa/4.0/": {'name': 'CC BY-NC-SA 4.0', 'description': 'Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International'},
-    "https://creativecommons.org/licenses/by-nc-nd/4.0/": {'name': 'CC BY-NC-ND 4.0', 'description': 'Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International'}
+    "https://creativecommons.org/publicdomain/zero/1.0/": {'name': 'CC0 1.0', 'code': 'cc0-1.0'},
+    "https://creativecommons.org/licenses/by/4.0/": {'name': 'CC BY 4.0', 'code': 'cc-by-4.0'},
+    "https://creativecommons.org/licenses/by-sa/4.0/": {'name': 'CC BY-SA 4.0', 'code': 'cc-by-sa-4.0'},
+    "https://creativecommons.org/licenses/by-nc/4.0/": {'name': 'CC BY-NC 4.0', 'code': 'cc-by-nc-4.0'},
+    "https://creativecommons.org/licenses/by-nd/4.0/": {'name': 'CC BY-ND 4.0', 'code': 'cc-by-nd-4.0'},
+    "https://creativecommons.org/licenses/by-nc-sa/4.0/": {'name': 'CC BY-NC-SA 4.0', 'code': 'cc-by-nc-sa-4.0'},
+    "https://creativecommons.org/licenses/by-nc-nd/4.0/": {'name': 'CC BY-NC-ND 4.0', 'code': 'cc-by-nc-nd-4.0'}
   },
   ResourceType: {
-    "http://schema.org/Article": {'name': 'Article', 'description': 'An article, such as a news article or piece of investigative report.'},
-    "http://schema.org/BlogPosting": {'name': 'BlogPosting', 'description': 'A blog post.'},
-    "http://schema.org/Course": {'name': 'Course', 'description': 'A description of an educational course.'},
-    "http://schema.org/Guide": {'name': 'Guide', 'description': 'Guide is a page or article that recommends specific products or services, or aspects of a thing for a user to consider.'},
-    "http://schema.org/NewsArticle": {'name': 'NewsArticle', 'description': 'A NewsArticle is an article whose content reports news, or provides background context and supporting materials for understanding the news.'},
-    "http://schema.org/Recipe": {'name': 'Recipe', 'description': 'A recipe.'},
-    "http://schema.org/Review": {'name': 'Review', 'description': 'A review of an item - for example, of a restaurant, movie, or store.'},
-    "http://schema.org/ScholarlyArticle": {'name': 'ScholarlyArticle', 'description': 'A scholarly article.'},
-    "http://purl.org/ontology/bibo/Slideshow": {'name': 'Slideshow', 'description': 'A presentation of a series of slides, usually presented in front of an audience with written text and images.'},
-    "http://usefulinc.com/ns/doap#Specification": {'name': 'Specification', 'description': 'A specification of a system\'s aspects, technical or otherwise.'},
-    "http://schema.org/TechArticle": {'name': 'TechArticle', 'description': 'A technical article - Example: How-to (task) topics, step-by-step, procedural troubleshooting, specifications, etc.'},
-    "http://schema.org/Thesis": {'name': 'Thesis', 'description': 'A thesis or dissertation document submitted in support of candidature for an academic degree or professional qualification.'},
-    "http://schema.org/Trip": {'name': 'Trip', 'description': 'A trip or journey. An itinerary of visits to one or more places.'}
+    "http://schema.org/Article": 'Article',
+    "http://schema.org/BlogPosting": 'Blog Posting',
+    "http://schema.org/Course": 'Course',
+    "http://schema.org/Guide": 'Guide',
+    "http://schema.org/NewsArticle": 'News Article',
+    "http://schema.org/Recipe": 'Recipe',
+    "http://schema.org/Review": 'Review',
+    "http://schema.org/ScholarlyArticle": 'Scholarly Article',
+    "http://purl.org/ontology/bibo/Slideshow": 'Slideshow',
+    "http://usefulinc.com/ns/doap#Specification": 'Specification',
+    "http://schema.org/TechArticle": 'Tech Article',
+    "http://schema.org/Thesis": 'Thesis',
+    "http://schema.org/Trip":'Trip',
   },
   PublicationStatus: {
-    "http://purl.org/spar/pso/draft": { 'name': 'Draft', 'description': 'The status of a work (for example a document or a dataset) prior to completion and publication.' },
-    "http://purl.org/spar/pso/published": { 'name': 'Published', 'description': 'The status of material (for example a document or a dataset) that has been published, i.e. made available for people to access, read or use, either freely or for a purchase price or an access fee.' }
+    "http://purl.org/spar/pso/draft": 'Draft',
+    "http://purl.org/spar/pso/published": 'Published'
   },
   Citation: {
     'http://purl.org/spar/cito/agreesWith': 'agrees with',
@@ -356,6 +346,20 @@ export default {
     'http://purl.org/spar/cito/usesMethodIn': 'uses method in'
   },
 
+  RequirementLevel: {
+    'http://www.w3.org/ns/spec#MUST': 'MUST',
+    'http://www.w3.org/ns/spec#MUSTNOT': 'MUST NOT',
+    'http://www.w3.org/ns/spec#REQUIRED': 'REQUIRED',
+    'http://www.w3.org/ns/spec#SHALL': 'SHALL',
+    'http://www.w3.org/ns/spec#SHALLNOT': 'SHALL NOT',
+    'http://www.w3.org/ns/spec#SHOULD': 'SHOULD',
+    'http://www.w3.org/ns/spec#SHOULDNOT': 'SHOULD NOT',
+    'http://www.w3.org/ns/spec#RECOMMENDED': 'RECOMMENDED',
+    'http://www.w3.org/ns/spec#NOTRECOMMENDED': 'NOT RECOMMENDED',
+    'http://www.w3.org/ns/spec#MAY': 'MAY',
+    'http://www.w3.org/ns/spec#OPTIONAL': 'OPTIONAL'
+  },
+
   SKOSClasses: {
     'http://www.w3.org/2004/02/skos/core#ConceptScheme': 'Concept Scheme',
     'http://www.w3.org/2004/02/skos/core#Collection': 'Collection',
@@ -364,12 +368,12 @@ export default {
   },
 
   TestDescriptionReviewStatus: {
-    'http://www.w3.org/2006/03/test-description#accepted': "the item has gone through a first review, which shows it as valid for further processing",
-    'http://www.w3.org/2006/03/test-description#approved': "the item has gone through the review process and was approved",
-    'http://www.w3.org/2006/03/test-description#assigned': "a more specific review of the item has been assigned to someone",
-    'http://www.w3.org/2006/03/test-description#onhold': "the item had already gone through the review process, but the results of the review need to be re-assessed due to new input",
-    'http://www.w3.org/2006/03/test-description#rejected': "the item has gone through the review process and was rejected",
-    'http://www.w3.org/2006/03/test-description#unreviewed': "the item has been proposed, but hasn't been reviewed (e.g. for completeness) yet"
+    'http://www.w3.org/2006/03/test-description#accepted': "Accepted",
+    'http://www.w3.org/2006/03/test-description#approved': "Approved",
+    'http://www.w3.org/2006/03/test-description#assigned': "Assigned",
+    'http://www.w3.org/2006/03/test-description#onhold': "On hold",
+    'http://www.w3.org/2006/03/test-description#rejected': "Rejected",
+    'http://www.w3.org/2006/03/test-description#unreviewed': "Unreviewed"
   },
 
   Actor: {
@@ -419,9 +423,9 @@ export default {
 
   AccessContext: {
     Share: {
-      'http://www.w3.org/ns/auth/acl#Read': 'Viewer',
-      'http://www.w3.org/ns/auth/acl#Write': 'Editor',
-      'http://www.w3.org/ns/auth/acl#Control': 'Owner'
+      'http://www.w3.org/ns/auth/acl#Read': 'read',
+      'http://www.w3.org/ns/auth/acl#Write': 'write',
+      'http://www.w3.org/ns/auth/acl#Control': 'control'
     }
   },
 
@@ -609,5 +613,8 @@ export default {
   SecretAgentNames: ['Abraham Lincoln', 'Admiral Awesome', 'Anonymous Coward', 'Believe it or not', 'Creative Monkey', 'Senegoid', 'Dog from the Web', 'Ekrub', 'Elegant Banana', 'Foo Bar', 'Lbmit', 'Lunatic Scholar', 'NahuLcm', 'Noslen', 'Okie Dokie', 'Samurai Cat', 'Vegan Superstar'],
 
   RefAreas: {"AF":"Afghanistan","A9":"Africa","AL":"Albania","DZ":"Algeria","AS":"American Samoa","L5":"Andean Region","AD":"Andorra","AO":"Angola","AG":"Antigua and Barbuda","1A":"Arab World","AR":"Argentina","AM":"Armenia","AW":"Aruba","AU":"Australia","AT":"Austria","AZ":"Azerbaijan","BS":"Bahamas, The","BH":"Bahrain","BD":"Bangladesh","BB":"Barbados","BY":"Belarus","BE":"Belgium","BZ":"Belize","BJ":"Benin","BM":"Bermuda","BT":"Bhutan","BO":"Bolivia","BA":"Bosnia and Herzegovina","BW":"Botswana","BR":"Brazil","BN":"Brunei Darussalam","BG":"Bulgaria","BF":"Burkina Faso","BI":"Burundi","CV":"Cabo Verde","KH":"Cambodia","CM":"Cameroon","CA":"Canada","S3":"Caribbean small states","KY":"Cayman Islands","CF":"Central African Republic","TD":"Chad","JG":"Channel Islands","CL":"Chile","CN":"China","CO":"Colombia","KM":"Comoros","CD":"Congo, Dem. Rep.","CG":"Congo, Rep.","CR":"Costa Rica","CI":"Cote d'Ivoire","HR":"Croatia","CU":"Cuba","CW":"Curacao","CY":"Cyprus","CZ":"Czech Republic","DK":"Denmark","DJ":"Djibouti","DM":"Dominica","DO":"Dominican Republic","Z4":"East Asia & Pacific (all income levels)","4E":"East Asia & Pacific (developing only)","C4":"East Asia and the Pacific (IFC classification)","EC":"Ecuador","EG":"Egypt, Arab Rep.","SV":"El Salvador","GQ":"Equatorial Guinea","ER":"Eritrea","EE":"Estonia","ET":"Ethiopia","XC":"Euro area","Z7":"Europe & Central Asia (all income levels)","7E":"Europe & Central Asia (developing only)","C5":"Europe and Central Asia (IFC classification)","EU":"European Union","FO":"Faeroe Islands","FJ":"Fiji","FI":"Finland","FR":"France","PF":"French Polynesia","GA":"Gabon","GM":"Gambia, The","GE":"Georgia","DE":"Germany","GH":"Ghana","GR":"Greece","GL":"Greenland","GD":"Grenada","GU":"Guam","GT":"Guatemala","GN":"Guinea","GW":"Guinea-Bissau","GY":"Guyana","HT":"Haiti","XE":"Heavily indebted poor countries (HIPC)","XD":"High income","XS":"High income: OECD","XR":"High income: nonOECD","HN":"Honduras","HK":"Hong Kong SAR, China","HU":"Hungary","IS":"Iceland","IN":"India","ID":"Indonesia","IR":"Iran, Islamic Rep.","IQ":"Iraq","IE":"Ireland","IM":"Isle of Man","IL":"Israel","IT":"Italy","JM":"Jamaica","JP":"Japan","JO":"Jordan","KZ":"Kazakhstan","KE":"Kenya","KI":"Kiribati","KP":"Korea, Dem. Rep.","KR":"Korea, Rep.","KV":"Kosovo","KW":"Kuwait","KG":"Kyrgyz Republic","LA":"Lao PDR","ZJ":"Latin America & Caribbean (all income levels)","XJ":"Latin America & Caribbean (developing only)","L4":"Latin America and the Caribbean","C6":"Latin America and the Caribbean (IFC classification)","LV":"Latvia","XL":"Least developed countries: UN classification","LB":"Lebanon","LS":"Lesotho","LR":"Liberia","LY":"Libya","LI":"Liechtenstein","LT":"Lithuania","XO":"Low & middle income","XM":"Low income","XN":"Lower middle income","LU":"Luxembourg","MO":"Macao SAR, China","MK":"Macedonia, FYR","MG":"Madagascar","MW":"Malawi","MY":"Malaysia","MV":"Maldives","ML":"Mali","MT":"Malta","MH":"Marshall Islands","MR":"Mauritania","MU":"Mauritius","MX":"Mexico","L6":"Mexico and Central America","FM":"Micronesia, Fed. Sts.","ZQ":"Middle East & North Africa (all income levels)","XQ":"Middle East & North Africa (developing only)","C7":"Middle East and North Africa (IFC classification)","XP":"Middle income","MD":"Moldova","MC":"Monaco","MN":"Mongolia","ME":"Montenegro","MA":"Morocco","MZ":"Mozambique","MM":"Myanmar","NA":"Namibia","NP":"Nepal","NL":"Netherlands","NC":"New Caledonia","NZ":"New Zealand","NI":"Nicaragua","NE":"Niger","NG":"Nigeria","M2":"North Africa","XU":"North America","MP":"Northern Mariana Islands","NO":"Norway","XY":"Not classified","OE":"OECD members","OM":"Oman","S4":"Other small states","S2":"Pacific island small states","PK":"Pakistan","PW":"Palau","PA":"Panama","PG":"Papua New Guinea","PY":"Paraguay","PE":"Peru","PH":"Philippines","PL":"Poland","PT":"Portugal","PR":"Puerto Rico","QA":"Qatar","RO":"Romania","RU":"Russian Federation","RW":"Rwanda","WS":"Samoa","SM":"San Marino","ST":"Sao Tome and Principe","SA":"Saudi Arabia","SN":"Senegal","RS":"Serbia","SC":"Seychelles","SL":"Sierra Leone","SG":"Singapore","SX":"Sint Maarten (Dutch part)","SK":"Slovak Republic","SI":"Slovenia","S1":"Small states","SB":"Solomon Islands","SO":"Somalia","ZA":"South Africa","8S":"South Asia","C8":"South Asia (IFC classification)","SS":"South Sudan","L7":"Southern Cone Extended","ES":"Spain","LK":"Sri Lanka","KN":"St. Kitts and Nevis","LC":"St. Lucia","MF":"St. Martin (French part)","VC":"St. Vincent and the Grenadines","C9":"Sub-Saharan Africa (IFC classification)","ZG":"Sub-Saharan Africa (all income levels)","ZF":"Sub-Saharan Africa (developing only)","A4":"Sub-Saharan Africa excluding South Africa","A5":"Sub-Saharan Africa excluding South Africa and Nigeria","SD":"Sudan","SR":"Suriname","SZ":"Swaziland","SE":"Sweden","CH":"Switzerland","SY":"Syrian Arab Republic","TJ":"Tajikistan","TZ":"Tanzania","TH":"Thailand","TL":"Timor-Leste","TG":"Togo","TO":"Tonga","TT":"Trinidad and Tobago","TN":"Tunisia","TR":"Turkey","TM":"Turkmenistan","TC":"Turks and Caicos Islands","TV":"Tuvalu","UG":"Uganda","UA":"Ukraine","AE":"United Arab Emirates","GB":"United Kingdom","US":"United States","XT":"Upper middle income","UY":"Uruguay","UZ":"Uzbekistan","VU":"Vanuatu","VE":"Venezuela, RB","VN":"Vietnam","VI":"Virgin Islands (U.S.)","PS":"West Bank and Gaza","1W":"World","YE":"Yemen, Rep.","ZM":"Zambia","ZW":"Zimbabwe"},
-    Languages: {"ab":"аҧсуа","aa":"Afaraf","af":"Afrikaans","ak":"Akan","sq":"Shqip","am":"አማርኛ","ar":"العربية","an":"Aragonés","hy":"Հայերեն","as":"অসমীয়া","av":"Aвар","ae":"Avesta","ay":"Aymar","az":"Azərbaycanca","bm":"Bamanankan","ba":"башҡорт","eu":"Euskara","be":"Беларуская","bn":"বাংলা","bh":"भोजपुरी","bi":"Bislama","bs":"Bosanski","br":"Brezhoneg","bg":"български","my":"ဗမာစာ","ca":"Català","ch":"Chamoru","ce":"нохчийн мотт","ny":"chiCheŵa","zh":"中文","cv":"чӑваш чӗлхи","kw":"Kernewek","co":"Corsu","cr":"ᓀᐦᐃᔭᐍᐏᐣ","hr":"Hrvatski","cs":"Čeština","da":"Dansk","dv":"ދިވެހި","nl":"Nederlands","en":"English","eo":"Esperanto","et":"Eesti","ee":"Eʋegbe","fo":"Føroyskt","fj":"Vosa Vakaviti","fi":"Suomi","fr":"Français","ff":"Fulfulde","gl":"Galego","ka":"ქართული","de":"Deutsch","el":"Ελληνικά","gn":"Avañeẽ","gu":"ગુજરાતી","ht":"Kreyòl ayisyen","ha":"Hausa, هَوُسَ","he":"עברית","hz":"Otjiherero","hi":"हिन्दी","ho":"Hiri Motu","hu":"Magyar","ia":"Interlingua","id":"Bahasa Indonesia","ie":"Interlingue","ga":"Gaeilge","ig":"Asụsụ Igbo","ik":"Iñupiaq","io":"Ido","is":"Íslenska","it":"Italiano","iu":"ᐃᓄᒃᑎᑐᑦ","ja":"日本語","jv":"Basa Jawa","kl":"Kalaallisut","kn":"ಕನ್ನಡ","kr":"Kanuri","ks":"कश्मीरी","kk":"Қазақ тілі","km":"ភាសាខ្មែរ","ki":"Gĩkũyũ","rw":"Ikinyarwanda","ky":"кыргыз","kv":"коми кыв","kg":"KiKongo","ko":"한국어","ku":"Kurdî","kj":"Kuanyama","la":"Latina","lb":"Lëtzebuergesch","lg":"Luganda","li":"Limburgs","ln":"Lingála","lo":"ພາສາລາວ","lt":"Lietuvių","lu":"Luba-Katanga","lv":"Latviešu","gv":"Gaelg","mk":"македонски","mg":"Malagasy","ms":"Bahasa Melayu","ml":"മലയാളം","mt":"Malti","mi":"te reo Māori","mr":"मराठी","mh":"Kajin M̧ajeļ","mn":"монгол","na":"Naoero","nv":"Diné bizaad","nb":"Norsk bokmål","nd":"isiNdebele","ne":"नेपाली","ng":"Owambo","nn":"Nynorsk","no":"Norsk","ii":"Sichuan Yi","nr":"isiNdebele","oc":"Occitan","oj":"ᐊᓂᔑᓈᐯᒧᐎᓐ","cu":"Словѣньскъ","om":"Afaan Oromoo","or":"ଓଡ଼ିଆ","os":"ирон æвзаг","pa":"ਪੰਜਾਬੀ","pi":"पाऴि","fa":"فارسی","pl":"Polski","ps":"پښتو","pt":"Português","qu":"Runa Simi","rm":"Rumantsch","rn":"kiRundi","ro":"Română","ru":"русский язык","sa":"संस्कृतम्","sc":"sardu","sd":"सिन्धी","se":"Davvisámegiella","sm":"Gagana Samoa","sg":"Sängö","sr":"српски","gd":"Gàidhlig","sn":"chiShona","si":"සිංහල","sk":"slovenčina","sl":"slovenščina","so":"Soomaaliga","st":"Sesotho","es":"Español","su":"Basa Sunda","sw":"Kiswahili","ss":"SiSwati","sv":"Svenska","ta":"தமிழ்","te":"తెలుగు","tg":"тоҷикӣ","th":"ไทย","ti":"ትግርኛ","bo":"བོད་ཡིག","tk":"Türkmen","tl":"Tagalog","tn":"Setswana","to":"faka Tonga","tr":"Türkçe","ts":"Xitsonga","tt":"татарча","tw":"Twi","ty":"Reo Tahiti","ug":"ئۇيغۇرچە‎","uk":"українська","ur":"اردو","uz":"O‘zbek","ve":"Tshivenḓa","vi":"Tiếng Việt","vo":"Volapük","wa":"Walon","cy":"Cymraeg","wo":"Wollof","fy":"Frysk","xh":"IsiXhosa","yi":"ייִדיש","yo":"Yorùbá","za":"Saɯ cueŋƅ"}
+  //https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes
+  Languages: {"ab":"Аҧсуа","aa":"Qafar af","af":"Afrikaans","ak":"Ákán","sq":"Shqip","am":"አማርኛ","ar":"اَلْعَرَبِيَّةُ","an":"Aragonés","hy":"Հայերեն","as":"অসমীয়া","av":"Авар мацӏ","ae":"Upastawakaēna","ay":"Aymara","az":"Azərbaycan dili","bm":"ߓߡߊߣߊ߲ߞߊ߲","ba":"Башҡорт теле","eu":"Euskara","be":"Беларуская мова","bn":"বাংলা","bi":"Bislama","bs":"Босански","br":"Brezhoneg","bg":"Български","my":"မြန်မာစာ","ca":"Català","ch":"Finu' Chamoru","ce":"Нохчийн мотт","ny":"Chichewa","zh":"中文","cu":"Славе́нскїй ѧ҆зы́къ","cv":"Чӑвашла","kw":"Kernowek","co":"Corsu","cr":"ᓀᐦᐃᔭᐁᐧᐃᐧᐣ","hr":"Hrvatski","cs":"Čeština","da":"Dansk","dv":"ދިވެހި","nl":"Nederlands","dz":"རྫོང་ཁ་","en":"English","eo":"Esperanto","et":"Eesti keel","ee":"Èʋegbe","fo":"Føroyskt","fj":"Na Vosa Vakaviti","fi":"Suomi","fr":"Français","fy":"Frysk","ff":"ࢻُلْࢻُلْدٜ","gd":"Gàidhlig","gl":"Galego","lg":"Luganda","ka":"ქართული","de":"Deutsch","el":"Νέα Ελληνικά","kl":"Kalaallisut","gn":"Avañe'ẽ","gu":"ગુજરાતી","ht":"Kreyòl ayisyen","ha":"هَرْشٜن هَوْس","haw":"ʻōlelo Hawaiʻi","he":"עברית","hz":"Otjiherero","hi":"हिन्दी","ho":"Hiri Motu","hu":"Magyar nyelv","is":"Íslenska","io":"Ido","ig":"ásụ̀sụ́ Ìgbò","id":"bahasa Indonesia","ia":"Interlingua","ie":"Interlingue; Occidental","iu":"ᐃᓄᒃᑎᑐᑦ","ik":"Iñupiaq","ga":"Gaeilge","it":"Italiano","ja":"日本語","jv":"ꦧꦱꦗꦮ","kn":"ಕನ್ನಡ","kr":"كَنُرِيِه","ks":"कॉशुर","kk":"Қазақша","km":"ខេមរភាសា","ki":"Gĩgĩkũyũ","rw":"Ikinyarwanda","ky":"Кыргыз","kv":"Коми кыв","kg":"Kikongo","ko":"한국어","kj":"Oshikwanyama","ku":"کوردی","lo":"ພາສາລາວ","la":"Latinum","lv":"Latviešu","li":"Lèmburgs","ln":"Lingála","lt":"Lietuvių","lu":"Kiluba","lb":"Lëtzebuergesch","mk":"Македонски","mg":"مَلَغَسِ","ms":"بهاس ملايو","ml":"മലയാളം","mt":"Malti","gv":"Gaelg","mi":"reo Māori","mr":"मराठी","mh":"kajin M̧ajel‌̧","mn":"ᠮᠣᠩᠭᠣᠯ ᠬᠡᠯᠡ","na":"dorerin Naoe","nv":"Diné bizaad","nd":"isiNdebele; saseNyakatho","nr":"isiNdebele; sakwaNdzundza","ng":"Ndonga","ne":"नेपाली भाषा","no":"Norsk","nb":"Norsk Bokmål","nn":"Norsk Nynorsk","oc":"Occitan; Provençal","oj":"ᐊᓂᔑᓈᐯᒧᐎᓐ","or":"ଓଡ଼ିଆ","om":"afaan Oromoo","os":"ирон Ӕвзаг","pi":"Pāli","ps":"پښتو","fa":"فارسی","pl":"Polski","pt":"Português","pa":"ਪੰਜਾਬੀ; پنجابی","qu":"Runa simi","ro":"Română","rm":"Rumantsch","rn":"Ikirundi","ru":"Русский язык","se":"Davvisámegiella","sm":"gagana Sāmoa","sg":"yângâ tî Sängö","sa":"संस्कृतम्","sc":"Sardu","sr":"Српски","sn":"chiShona","sd":"سنڌي; सिन्धी","si":"සිංහල","sk":"Slovenčina","sl":"Slovenščina","so":"Soomaali","st":"Sesotho","es":"Español","su":"basa Sunda","sw":"Kiswahili","ss":"siSwati","sv":"Svenska","tl":"Wikang Tagalog","ty":"reo Tahiti","tg":"Тоҷикӣ","ta":"தமிழ்","tt":"Татар теле","te":"తెలుగు","th":"ภาษาไทย","bo":"བོད་སྐད་","ti":"ትግርኛ","to":"lea faka-Tonga","ts":"Xitsonga","tn":"Setswana","tr":"Türkçe","tk":"Türkmençe","tw":"Twi","ug":"ئۇيغۇر تىلى","uk":"Українська","ur":"اُردُو","uz":"Ózbekça","ve":"Tshivenḓa","vi":"tiếng Việt","vo":"Volapük","wa":"Walon","cy":"Cymraeg","wo":"وࣷلࣷفْ","xh":"isiXhosa","ii":"ꆈꌠꉙ","yi":"ייִדיש","yo":"èdè Yorùbá","za":"話僮","zu":"isiZulu"},
+
+  Translations: ['en', 'es']
 };

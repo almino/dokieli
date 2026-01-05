@@ -3,13 +3,14 @@ import { wrapInList, liftListItem } from "prosemirror-schema-list"
 import { DOMSerializer, DOMParser } from "prosemirror-model"
 import { TextSelection } from "prosemirror-state"
 import { schema, allowedEmptyAttributes } from "./../../schema/base.js"
-import { formHandlerA, formHandlerAnnotate, formHandlerBlockquote, formHandlerImg, formHandlerQ, formHandlerCitation, formHandlerSemantics } from "./handlers.js"
+import { formHandlerA, formHandlerAnnotate, formHandlerBlockquote, formHandlerImg, formHandlerQ, formHandlerCitation, formHandlerRequirement, formHandlerSemantics } from "./handlers.js"
 import { ToolbarView, annotateFormControls } from "../toolbar.js"
-import { getCitationOptionsHTML, getLanguageOptionsHTML } from "../../../doc.js"
+import { createRDFaHTMLRequirement, getCitationOptionsHTML, getLanguageOptionsHTML, getRequirementLevelOptionsHTML, getRequirementSubjectOptionsHTML } from "../../../doc.js"
 import { getResource } from "../../../fetcher.js"
-import { fragmentFromString } from "../../../util.js"
+import { fragmentFromString, stringFromFragment } from "../../../util.js"
 import Config from "../../../config.js";
 import { htmlEncode } from "../../../utils/html.js";
+import { i18n } from "../../../i18n.js"
 
 const ns = Config.ns;
 
@@ -28,6 +29,7 @@ export class AuthorToolbar extends ToolbarView {
       img: [ { event: 'submit', callback: this.formHandlerImg }, { event: 'click', callback: (e) => this.formClickHandler(e, 'img') } ],
       semantics: [ { event: 'submit', callback: (e) => this.formHandlerSemantics(e, 'semantics') }, { event: 'click', callback: (e) => this.formClickHandler(e, 'semantics') } ],
       citation: [ { event: 'submit', callback: (e) => this.formHandlerCitation(e, 'citation') }, { event: 'click', callback: (e) => this.formClickHandler(e, 'citation') } ],
+      requirement: [ { event: 'submit', callback: (e) => this.formHandlerRequirement(e, 'requirement') }, { event: 'click', callback: (e) => this.formClickHandler(e, 'requirement') } ],
       note: [ { event: 'submit', callback: (e) => this.formHandlerAnnotate(e, 'note') }, { event: 'click', callback: (e) => this.formClickHandler(e, 'note') } ],
     }
   }
@@ -39,6 +41,7 @@ export class AuthorToolbar extends ToolbarView {
       { name: 'formHandlerBlockquote', fn: formHandlerBlockquote },
       { name: 'formHandlerImg', fn: formHandlerImg },
       { name: 'formHandlerCitation', fn: formHandlerCitation },
+      { name: 'formHandlerRequirement', fn: formHandlerRequirement },
       // { name: 'formHandlerSparkline', fn: formHandlerSparkline },
       { name: 'formHandlerSemantics', fn: formHandlerSemantics },
       { name: 'formHandlerAnnotate', fn: formHandlerAnnotate },
@@ -70,7 +73,22 @@ export class AuthorToolbar extends ToolbarView {
 
   getFormLegends() {
     return {
-      note: 'Add note',
+      note: i18n.t('editor.toolbar.note.form.legend.textContent'),
+      requirement: i18n.t('editor.toolbar.requirement.form.legend.textContent'),
+      a: i18n.t('editor.toolbar.a.form.legend.textContent'),
+      blockquote: i18n.t('editor.toolbar.blockquote.form.legend.textContent'),
+      q: i18n.t('editor.toolbar.q.form.legend.textContent'),
+      img: i18n.t('editor.toolbar.img.form.legend.textContent'),
+      citation: i18n.t('editor.toolbar.citation.form.legend.textContent'),
+      semantics: i18n.t('editor.toolbar.semantics.form.legend.textContent'),
+    }
+  }
+
+  // TODO: this function returns only the textarea placeholders, but many popups in the author toolbar need more than one field. revisit.
+  getFormPlaceholders() {
+    return {
+      note: i18n.t('editor.toolbar.note.form.textarea.placeholder'),
+      citation: i18n.t('editor.toolbar.citation.form.textarea.placeholder'),
     }
   }
 
@@ -78,33 +96,33 @@ export class AuthorToolbar extends ToolbarView {
     const toolbarPopups = {
       a: (options) => `
         <fieldset>
-          <legend>Add a link</legend>
+          <legend data-i18n="editor.toolbar.a.form.legend">${options.legend}</legend>
           <dl class="info">
             <dt class="required">*</dt>
-            <dd>Required field</dd>
+            <dd data-i18n="info.required">${i18n.t('info.required.textContent')}</dd>
           </dl>
-          <label for="a-href">URL</label> <input class="editor-form-input" id="a-href" name="a-href" pattern="https?://.+" placeholder="Paste or type a link (URL)" oninput="setCustomValidity('')" oninvalid="setCustomValidity('Please enter a valid URL')" required="" type="url" value="" />
-          <label for="a-title">Title</label> <input class="editor-form-input" id="a-title" name="a-title" placeholder="Add advisory information for the tooltip." type="text" />
-          <button class="editor-form-submit" title="Save" type="submit">Save</button>
-          <button class="editor-form-cancel" title="Cancel" type="button">Cancel</button>
+          <label for="a-href">URL</label> <input class="editor-form-input" data-i18n="editor.toolbar.form.url.input" id="a-href" name="a-href" pattern="https?://.+" placeholder="${i18n.t('editor.toolbar.form.url.input.placeholder')}" required="" type="url" value="" />
+          <label data-i18n="editor.toolbar.a.form.a-title.label" for="a-title">${i18n.t('editor.toolbar.a.form.a-title.label.textContent')}</label> <input class="editor-form-input" data-i18n="editor.toolbar.a.form.a-title.input" id="a-title" name="a-title" placeholder="${i18n.t('editor.toolbar.a.form.a-title.input.placeholder')}" type="text" />
+          <button class="editor-form-submit" data-i18n="editor.toolbar.form.save.button" type="submit">${i18n.t('editor.toolbar.form.save.button.textContent')}</button>
+          <button class="editor-form-cancel" data-i18n="editor.toolbar.form.cancel.button" type="button">${i18n.t('editor.toolbar.form.cancel.button.textContent')}</button>
         </fieldset>
       `,
 
       blockquote: (options) => `
         <fieldset>
-          <legend>Add the source of the blockquote</legend>
-          <label for="blockquote-cite">URL</label> <input class="editor-form-input" id="blockquote-cite" name="blockquote-cite" pattern="https?://.+" placeholder="Paste or type a link (URL)" oninput="setCustomValidity('')" oninvalid="setCustomValidity('Please enter a valid URL')" type="url" value="" />
-          <button class="editor-form-submit" title="Save" type="submit">Save</button>
-          <button class="editor-form-cancel" title="Cancel" type="button">Cancel</button>
+          <legend data-i18n="editor.toolbar.blockquote.form.legend">${options.legend}</legend>
+          <label for="blockquote-cite">URL</label> <input class="editor-form-input" data-i18n="editor.toolbar.form.url.input"  id="blockquote-cite" name="blockquote-cite" pattern="https?://.+" placeholder="${i18n.t('editor.toolbar.form.url.input.placeholder')}" type="url" value="" />
+          <button class="editor-form-submit" data-i18n="editor.toolbar.form.save.button" type="submit">${i18n.t('editor.toolbar.form.save.button.textContent')}</button>
+          <button class="editor-form-cancel" data-i18n="editor.toolbar.form.cancel.button" type="button">${i18n.t('editor.toolbar.form.cancel.button.textContent')}</button>
         </fieldset>
       `,
 
       q: (options) => `
         <fieldset>
-          <legend>Add the source of the quote</legend>
-          <label for="q-cite">URL</label> <input class="editor-form-input" id="q-cite" name="q-cite" pattern="https?://.+" placeholder="Paste or type a link (URL)" oninput="setCustomValidity('')" oninvalid="setCustomValidity('Please enter a valid URL')" type="url" value="" />
-          <button class="editor-form-submit" title="Save" type="submit">Save</button>
-          <button class="editor-form-cancel" title="Cancel" type="button">Cancel</button>
+          <legend data-i18n="editor.toolbar.q.form.legend">${options.legend}</legend>
+          <label for="q-cite">URL</label> <input class="editor-form-input" data-i18n="editor.toolbar.form.url.input" id="q-cite" name="q-cite" pattern="https?://.+" placeholder="${i18n.t('editor.toolbar.form.url.input.placeholder')}" type="url" value="" />
+          <button class="editor-form-submit" data-i18n="editor.toolbar.form.save.button" type="submit">${i18n.t('editor.toolbar.form.save.button.textContent')}</button>
+          <button class="editor-form-cancel" data-i18n="editor.toolbar.form.cancel.button" type="button">${i18n.t('editor.toolbar.form.cancel.button.textContent')}</button>
         </fieldset>
       `,
 
@@ -112,14 +130,14 @@ export class AuthorToolbar extends ToolbarView {
       //TODO: browse storage
       img: (options) => `
         <fieldset>
-          <legend>Add an image with a description</legend>
+          <legend data-i18n="editor.toolbar.img.form.legend">${options.legend}</legend>
           <figure class="img-preview"></figure>
-          <label for="img-file">Upload</label> <input class="editor-form-input" id="img-file" name="img-file" type="file" />
+          <label data-i18n="editor.toolbar.img.form.img-file.label" for="img-file">${i18n.t('editor.toolbar.img.form.img-file.label.textContent')}</label> <input class="editor-form-input" id="img-file" name="img-file" type="file" />
           <label for="img-src">URL</label> <input class="editor-form-input" id="img-src" name="img-src" type="url" value="" />
-          <label for="img-alt">Description</label> <input class="editor-form-input" id="img-alt" name="img-alt" placeholder="Describe the image for people who are blind or have low vision." type="text" value="" />
-          <label for="img-figcaption">Caption</label> <input class="editor-form-input" id="img-figcaption" name="img-figcaption" placeholder="A caption or legend for the figure." type="text" value="" />
-          <button class="editor-form-submit" title="Save" type="submit">Save</button>
-          <button class="editor-form-cancel" title="Cancel" type="button">Cancel</button>
+          <label data-i18n="editor.toolbar.img.form.img-alt.label" for="img-alt">${i18n.t('editor.toolbar.img.form.img-alt.label.textContent')}</label> <input class="editor-form-input" data-i18n="editor.toolbar.img.form.img-alt.input" id="img-alt" name="img-alt" placeholder="${i18n.t('editor.toolbar.img.form.img-alt.input.placeholder')}" type="text" value="" />
+          <label data-i18n="editor.toolbar.img.form.img-figcaption" for="img-figcaption">${i18n.t('editor.toolbar.img.form.img-figcaption.label.textContent')}</label> <input class="editor-form-input" data-i18n="editor.toolbar.img.form.img-figcaption.input" id="img-figcaption" name="img-figcaption" placeholder="${i18n.t('editor.toolbar.img.form.img-alt.label.textContent')}" type="text" value="" />
+          <button class="editor-form-submit" data-i18n="editor.toolbar.form.save.button" type="submit">${i18n.t('editor.toolbar.form.save.button.textContent')}</button>
+          <button class="editor-form-cancel" data-i18n="editor.toolbar.form.cancel.button" type="button">${i18n.t('editor.toolbar.form.cancel.button.textContent')}</button>
         </fieldset>
       `,
 
@@ -127,41 +145,62 @@ export class AuthorToolbar extends ToolbarView {
 
       citation: (options) => `
         <fieldset>
-          <legend>Add a citation</legend>
-          <label for="citation-specref-search">Search <a href="https://www.specref.org/" rel="noopener" target="_blank">specref.org</a></label> <input class="editor-form-input" id="citation-specref-search" name="citation-specref-search" placeholder="Enter terms to search for specifications" type="text" value="" />
-          <input id="citation-specref-search-submit" name="citation-specref-search-submit" type="submit" value="Search" />
+          <legend data-i18n="editor.toolbar.citation.form.legend">${options.legend}</legend>
+          <label data-i18n="editor.toolbar.citation.form.specref-search.label" for="citation-specref-search">${i18n.t('editor.toolbar.citation.form.specref-search.label.textContent')} <a href="https://www.specref.org/" rel="noopener" target="_blank">specref.org</a></label> <input class="editor-form-input" data-i18n="editor.toolbar.citation.form.specref-search.input" id="citation-specref-search" name="citation-specref-search" placeholder="${i18n.t('editor.toolbar.citation.form.specref-search.input.placeholder')}" type="text" value="" />
+          <input data-i18n="editor.toolbar.form.search.button" id="citation-specref-search-submit" name="citation-specref-search-submit" type="submit" value="${i18n.t('editor.toolbar.form.search.button.value')}" />
           <span>
-          <input id="ref-footnote" name="citation-ref-type" type="radio" value="ref-footnote" /> <label for="ref-footnote">Footnote</label>
-          <input id="ref-reference" name="citation-ref-type" type="radio" value="ref-reference" /> <label for="ref-reference">Reference</label>
+          <input id="ref-footnote" name="citation-ref-type" type="radio" value="ref-footnote" /> <label data-i18n="editor.toolbar.citation.form.ref-footnote.form.label" for="ref-footnote">${i18n.t('editor.toolbar.citation.form.ref-footnote.label.textContent')}</label>
+          <input id="ref-reference" name="citation-ref-type" type="radio" value="ref-reference" /> <label data-i18n="editor.toolbar.citation.form.ref-reference.label" for="ref-reference">${i18n.t('editor.toolbar.citation.form.ref-reference.label.textContent')}</label>
           </span>
-          <label for="citation-relation">Relation</label>
-          <select class="editor-form-select" id="citation-relation" name="citation-relation">${getCitationOptionsHTML()}</select>
+          <label data-i18n="editor.toolbar.citation.form.citation-relation.label" for="citation-relation">${i18n.t('editor.toolbar.citation.form.citation-relation.label.textContent')}</label>
+          <select class="editor-form-select" id="citation-relation" name="citation-relation">${getCitationOptionsHTML({ 'selected': '' })}</select>
           <label for="citation-url">URL</label>
-          <input class="editor-form-input" id="citation-url" name="citation-url" pattern="https?://.+" placeholder="Paste or type a link (URL)" oninput="setCustomValidity('')" oninvalid="setCustomValidity('Please enter a valid URL')" type="url" value="" />
-          <label for="citation-content">Note</label>
-          <textarea class="editor-form-textarea" cols="20" id="citation-content" name="citation-content" rows="1" placeholder="${options.placeholder ? options.placeholder : 'Describe the purpose or reason of citation.'}"></textarea>
-          <label for="citation-language">Language</label>
+          <input class="editor-form-input" data-i18n="editor.toolbar.form.url.input" id="citation-url" name="citation-url" pattern="https?://.+" placeholder="${i18n.t('editor.toolbar.form.url.input.placeholder')}" type="url" value="" />
+          <label data-i18n="editor.toolbar.note.form.label" for="citation-content">${i18n.t('editor.toolbar.note.form.label.textContent')}</label>
+          <textarea class="editor-form-textarea" cols="20" data-i18n="editor.toolbar.${options.button}.form.textarea" id="citation-content" name="citation-content" rows="1" placeholder="${options.placeholder}"></textarea>
+          <label data-i18n="language.label" for="citation-language">${i18n.t('language.label.textContent')}</label>
           <select class="editor-form-select" id="citation-language" name="citation-language">${getLanguageOptionsHTML()}</select>
-          <button class="editor-form-submit" title="Save" type="submit">Save</button>
-          <button class="editor-form-cancel" title="Cancel" type="button">Cancel</button>
+          <button class="editor-form-submit" data-i18n="editor.toolbar.form.save.button" type="submit">${i18n.t('editor.toolbar.form.save.button.textContent')}</button>
+          <button class="editor-form-cancel" data-i18n="editor.toolbar.form.cancel.button" type="button">${i18n.t('editor.toolbar.form.cancel.button.textContent')}</button>
           <div class="specref-search-results"></div>
         </fieldset>
       `,
 
+      requirement: (options) => `
+        <fieldset>
+          <legend data-i18n="editor.toolbar.requirement.form.legend">${options.legend}</legend>
+          <dl id="requirement-preview">
+            <dt data-i18n="editor.toolbar.requirement.form.preview.dt">${i18n.t('editor.toolbar.requirement.form.preview.dt.textContent')}</dt>
+            <dd><samp id="requirement-preview-samp"></samp></dd>
+          </dl>
+          <label data-i18n="editor.toolbar.requirement.form.subject.dt" for="requirement-subject">${i18n.t('editor.toolbar.requirement.form.subject.dt.textContent')}</label>
+          <select class="editor-form-select" id="requirement-subject" name="requirement-subject">${getRequirementSubjectOptionsHTML(options)}</select>
+          <label data-i18n="editor.toolbar.requirement.form.level.dt" for="requirement-level">${i18n.t('editor.toolbar.requirement.form.level.dt.textContent')}</label>
+          <select class="editor-form-select" id="requirement-level" name="requirement-level">${getRequirementLevelOptionsHTML(options)}</select>
+          <button class="editor-form-submit" data-i18n="editor.toolbar.form.save.button" type="submit">${i18n.t('editor.toolbar.form.save.button.textContent')}</button>
+          <button class="editor-form-cancel" data-i18n="editor.toolbar.form.cancel.button" type="button">${i18n.t('editor.toolbar.form.cancel.button.textContent')}</button>
+        </fieldset>
+      `,
+
+          // <label for="requirement-consensus">Consensus source</label>
+          // <input class="editor-form-input" data-i18n="editor.toolbar.form.url.input" id="requirement-consensus" name="requirement-consensus" pattern="https?://.+" placeholder="${i18n.t('editor.toolbar.form.url.input.placeholder')}" )})" type="url" value="" />
+          // <label data-i18n="language.label" for="requirement-language">${i18n.t('language.label.textContent')}</label>
+          // <select class="editor-form-select" id="requirement-language" name="requirement-language">${getLanguageOptionsHTML()}</select>
+
       semantics: (options) => `
         <fieldset>
-          <legend>Add semantics</legend>
-          <label for="semantics-about">about</label> <input class="editor-form-input" id="semantics-about" name="semantics-about" placeholder="Enter URL, e.g., https://example.net/foo#bar" oninput="setCustomValidity('')" oninvalid="setCustomValidity('Please enter a valid URI')" type="url" value="" />
-          <label for="semantics-resource">resource</label> <input class="editor-form-input" id="semantics-resource" name="semantics-resource" placeholder="Enter URL, e.g., https://example.net/foo#bar" oninput="setCustomValidity('')" oninvalid="setCustomValidity('Please enter a valid URI')" type="url" value="" />
-          <label for="semantics-typeof">typeof</label> <input class="editor-form-input" id="semantics-typeof" name="semantics-typeof" placeholder="Enter URL, e.g., https://example.net/foo#Baz" oninput="setCustomValidity('')" oninvalid="setCustomValidity('Please enter a valid URI')" type="url" value="" />
+          <legend data-i18n="editor.toolbar.semantics.form.legend">${options.legend}</legend>
+          <label for="semantics-about">about</label> <input class="editor-form-input" id="semantics-about" name="semantics-about" placeholder="Enter URL, e.g., https://example.net/foo#bar" type="url" value="" />
+          <label for="semantics-resource">resource</label> <input class="editor-form-input" id="semantics-resource" name="semantics-resource" placeholder="Enter URL, e.g., https://example.net/foo#bar" type="url" value="" />
+          <label for="semantics-typeof">typeof</label> <input class="editor-form-input" id="semantics-typeof" name="semantics-typeof" placeholder="Enter URL, e.g., https://example.net/foo#Baz" type="url" value="" />
           <label for="semantics-rel">rel</label> <input class="editor-form-input" id="semantics-rel" name="semantics-rel" placeholder="schema:url" type="text" value="" />
           <label for="semantics-property">property</label> <input class="editor-form-input" name="semantics-property" id="semantics-property" placeholder="schema:name" type="text" value="" />
           <label for="semantics-href">href</label> <input class="editor-form-input" id="semantics-href" name="semantics-href" placeholder="Enter URL, e.g., https://example.net/foo" type="url" value="" />
           <label for="semantics-content">content</label> <input class="editor-form-input" id="semantics-content" name="semantics-content" placeholder="Enter content, e.g., 'Baz'" type="text" value="" />
           <label for="semantics-lang">lang</label> <input class="editor-form-input" name="semantics-lang" id="semantics-lang" placeholder="Enter language code, e.g., en" type="text" value="" />
           <label for="semantics-datatype">datatype</label> <input class="editor-form-input" name="semantics-datatype" id="semantics-datatype" placeholder="Enter URL, e.g., https://example.net/qux" type="text" value="" />
-          <button class="editor-form-submit" title="Save" type="submit">Save</button>
-          <button class="editor-form-cancel" title="Cancel" type="button">Cancel</button>
+          <button class="editor-form-submit" data-i18n="editor.toolbar.form.save.button" type="submit">${i18n.t('editor.toolbar.form.save.button.textContent')}</button>
+          <button class="editor-form-cancel" data-i18n="editor.toolbar.form.cancel.button" type="button">${i18n.t('editor.toolbar.form.cancel.button.textContent')}</button>
         </fieldset>
       `
 
@@ -261,16 +300,16 @@ TODO:
     // console.log(selectedParentElement)
 
     // var selectionState = MediumEditor.selection.exportSelection(selectedParentElement, this.document);
-    // var prefixStart = Math.max(0, start - Config.ContextLength);
+    var prefixStart = Math.max(0, from - Config.ContextLength);
     // console.log('pS ' + prefixStart);
     // var prefix = selectedParentElement.textContent.substr(prefixStart, start - prefixStart);
-    let prefix = doc.textBetween(from - contextLength, from)  // consider \n
+    let prefix = doc.textBetween(prefixStart, from)  // consider \n
     // console.log('-' + prefix + '-');
     prefix = htmlEncode(prefix);
     
-    // var suffixEnd = Math.min(selectedParentElement.textContent.length, end + Config.ContextLength);
+    var suffixEnd = Math.min(selectedParentElement.textContent.length, to + Config.ContextLength);
     // console.log('sE ' + suffixEnd);
-    let suffix =  doc.textBetween(to, to + contextLength)  // consider \n
+    let suffix =  doc.textBetween(to, suffixEnd)  // consider \n
     // console.log('-' + suffix + '-');
     suffix = htmlEncode(suffix);
 
@@ -299,14 +338,36 @@ TODO:
   }
 
 
+nodeToHTML(node, schema) {
+  const serializer = DOMSerializer.fromSchema(schema);
+  const fragment = serializer.serializeFragment(node.content);
+  const div = document.createElement('div');
+  div.appendChild(fragment);
+  return div.innerHTML;
+}
+
+
   replaceSelectionWithFragment(fragment) {
     // console.log(fragment)
     const { state, dispatch } = this.editorView;
     const { selection, schema } = state;
+    // console.log(selection)
     // parseSlice(fragment, { preserveWhitespace: true })
     let node = DOMParser.fromSchema(schema).parseSlice(fragment);
-  
+    const selText = state.doc.textBetween(selection.from, selection.to, " ");
     let tr = state.tr.replaceSelection(node);
+    // console.log(tr)
+    dispatch(tr);
+  }
+
+  replaceSelectionWithNodeFromFragment(fragment) {
+    // console.log(fragment)
+    const { state, dispatch } = this.editorView;
+    const { selection, schema } = state;
+    // parseSlice(fragment, { preserveWhitespace: true })
+    let node = DOMParser.fromSchema(schema).parse(fragment);
+    const selText = state.doc.textBetween(selection.from, selection.to, " ");
+    let tr = state.tr.replaceSelectionWith(node);
     // console.log(tr)
     dispatch(tr);
   }
@@ -410,13 +471,170 @@ TODO:
     });
   }
 
+  populateFormRequirement(button, node, state) {
+    // clear previous errors - TODO maybe this should happen elsewhere
+    const previousErrors = node.querySelectorAll('.error');
+    if (previousErrors.length) {
+      previousErrors.forEach(error => error.remove());
+      node.querySelector('.editor-form-submit').disabled = false;
+    }
+
+    var selectedTextContent = state.doc.textBetween(state.selection.from, state.selection.to, "\n");
+
+    var requirementSubjectURI, requirementSubjectLabel, requirementLevelURI, requirementLevelLabel;
+    var prevRequirementSubjectLabel, prevRequirementLevelLabel;
+
+    const requirementSubject = document.querySelector('#requirement-subject');
+    const requirementLevel = document.querySelector('#requirement-level');
+
+    //Build error
+    const legend = node.querySelector('legend');
+
+    const requirementSubjectOptions = [...requirementSubject.querySelectorAll('option')];
+    const requirementLevelOptions = [...requirementLevel.querySelectorAll('option')];
+
+    const hasRequirementSubjectMatch = requirementSubjectOptions.some(option => selectedTextContent.toLowerCase().includes(option.textContent.trim().toLowerCase()));
+    const hasRequirementLevelMatch = requirementLevelOptions.some(option => selectedTextContent.toLowerCase().includes(option.textContent.trim().toLowerCase()));
+
+    const errorList = [];
+
+    if (!hasRequirementSubjectMatch || !hasRequirementLevelMatch) {
+      const classesOfProducts = requirementSubjectOptions.map(option => `<a href="${option.value}">${option.textContent}</a>`);
+      const requirementLevels = requirementLevelOptions.map(option => `<a href="${option.value}">${option.textContent}</a>`);
+
+      if (!hasRequirementSubjectMatch) {
+        errorList.push(`Selected text does not include a product class, i.e., the requirement's subject, such as ${classesOfProducts.join(', ')}.`);
+      }
+
+      if (!hasRequirementLevelMatch) {
+        errorList.push(`Selected text does not include a normative keyword, i.e., the requirement's level, such as ${requirementLevels.sort(() => Math.random() - 0.5).slice(0, 3).join(', ')}, etc.`);
+      }
+    }
+
+    if (errorList.length) {
+      let errorListItems = [];
+      errorList.forEach((errorMessage) => {
+        errorListItems.push(`<li>${errorMessage}</li>`);
+      })
+      legend.insertAdjacentHTML('afterend', `<ul class="error">${errorListItems.join('')}</ul>`);
+      node.querySelector('.editor-form-submit').disabled = true;
+    }
+
+    if (requirementSubject) {
+      requirementSubjectOptions.forEach(option => {
+        var optionTextContent = option.textContent.trim();
+        if (selectedTextContent.toLowerCase().includes(optionTextContent.toLowerCase())) {
+          option.selected = true;
+          requirementSubjectLabel = optionTextContent;
+          requirementSubjectURI = option.value;
+          prevRequirementSubjectLabel = requirementSubjectLabel;
+        }
+      });
+
+      requirementSubject.addEventListener('change', e => {
+        var selectedOptionValue = e.target.value;
+        var selectedOptionTextContent = e.target.querySelector(`[value="${selectedOptionValue}"]`).textContent.trim();
+
+        var requirementSubjectCurrentNode = node.querySelector('#requirement-preview-samp [rel="spec:requirementSubject"]');
+
+        requirementSubjectCurrentNode.setAttribute('resource', selectedOptionValue);
+        requirementSubjectCurrentNode.textContent = selectedOptionTextContent;
+      });
+    }
+
+
+    if (requirementLevel) {
+      requirementLevel.querySelectorAll('option').forEach(option => {
+        var optionTextContent = option.textContent.trim();
+        if (selectedTextContent.toLowerCase().includes(optionTextContent.toLowerCase())) {
+          option.selected = true;
+          requirementLevelLabel = optionTextContent;
+          requirementLevelURI = option.value;
+          prevRequirementLevelLabel = requirementLevelLabel;
+        }
+      });
+
+      requirementLevel.addEventListener('change', e => {
+        var selectedOptionValue = e.target.value;
+        var selectedOptionTextContent = e.target.querySelector(`[value="${selectedOptionValue}"]`).textContent.trim();
+
+        var requirementLevelCurrentNode = node.querySelector('#requirement-preview-samp [rel="spec:requirementLevel"]');
+
+        requirementLevelCurrentNode.setAttribute('resource', selectedOptionValue);
+        requirementLevelCurrentNode.textContent = selectedOptionTextContent;
+      });
+    }
+
+    //XXX: If the selection already includes a link with relation cito:citesAsSourceDocument or spec:basedOnConsensus, use that to populate #requirement-consensus. Is this the best way:
+    const requirementConsensus = document.querySelector('#requirement-consensus');
+    if (requirementConsensus) {
+      state.doc.nodesBetween(state.selection.from, state.selection.to, node => {
+        node.marks.forEach(mark => {
+          // console.log(mark)
+          if (mark.type.name === 'a' && ['cito:citesAsSourceDocument','spec:basedOnConsensus'].includes(mark.attrs.originalAttributes.rel)) {
+            requirementConsensus.value = mark.attrs.originalAttributes.href;
+          }
+        });
+      });
+    }
+
+    let selectedLanguage = '';
+    const requirementLanguage = document.querySelector('#requirement-language');
+
+    if (requirementLanguage) {
+      requirementLanguage.addEventListener('change', e => {
+        selectedLanguage = e.target.value;
+
+        var requirementCurrentNode = node.querySelector('#requirement-preview-samp [rel="spec:requirement"]');
+
+        requirementCurrentNode.setAttribute('lang', selectedLanguage);
+        requirementCurrentNode.setAttribute('xml:lang', selectedLanguage);
+      });
+    }
+
+    var r = {};
+    r.subject = requirementSubjectURI;
+    r.level = requirementLevelURI;
+    r.prevSubjectLabel = prevRequirementSubjectLabel;
+    r.prevLevelLabel = prevRequirementLevelLabel;
+    r.selectedTextContent = selectedTextContent;
+    r.lang = selectedLanguage;
+    r.basedOnConsensus = requirementConsensus;
+
+    console.log(state.selection.content())
+    const { $from, $to } = state.selection;
+
+    let depth = $from.depth;
+    while (depth >= 0 && $from.node(depth) !== $to.node(depth)) {
+      depth--;
+    }
+
+    const ancestorNode = $from.node(depth); 
+
+    const wrapper = document.createElement('div');
+    ancestorNode.content.forEach(child => {
+      wrapper.appendChild(DOMSerializer.fromSchema(schema).serializeNode(child));
+    });
+
+    const selectedHtmlString = wrapper.getHTML();
+    console.log(selectedHtmlString);
+    r.selectedHtmlString = selectedHtmlString;
+
+    var html = createRDFaHTMLRequirement(r, 'requirement')
+
+    // console.log(html)
+
+    var preview = document.querySelector('#requirement-preview-samp');
+    preview.replaceChildren(fragmentFromString(html));
+  }
+
   populateFormCitation(button, node, state) {
     // const { selection } = state;
     // const { from, to } = selection;
     const citationSpecRefSearch = document.querySelector('#citation-specref-search');
     // console.log(citationSpecRefSearch);
   
-    const citationUrl = document.querySelector('#citation-url');  
+    const citationUrl = document.querySelector('#citation-url');
     // console.log(citationUrl);
   
     citationSpecRefSearch.focus();
@@ -520,7 +738,8 @@ TODO:
   getPopulateForms() {
     return {
       img: this.populateFormImg,
-      citation: this.populateFormCitation
+      citation: this.populateFormCitation,
+      requirement: this.populateFormRequirement,
     }
   }
 

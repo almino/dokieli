@@ -1,21 +1,20 @@
 import Config from './config.js'
-import { getDateTimeISO, fragmentFromString, generateAttributeId, uniqueArray, generateUUID, matchAllIndex, parseISODuration, getRandomIndex, getHash, fixDoubleEscapedEntities, stringFromFragment } from './util.js'
-import { getAbsoluteIRI, getBaseURL, stripFragmentFromString, getFragmentFromString, getURLLastPath, getPrefixedNameFromIRI, generateDataURI, getProxyableIRI } from './uri.js'
-import { getResource, getResourceHead, deleteResource, processSave, patchResourceWithAcceptPatch } from './fetcher.js'
+import { getDateTimeISO, fragmentFromString, generateAttributeId, uniqueArray, generateUUID, matchAllIndex, parseISODuration, getRandomIndex, getHash, stringFromFragment } from './util.js'
+import { getAbsoluteIRI, getBaseURL, stripFragmentFromString, getFragmentFromString, getURLLastPath, getPrefixedNameFromIRI, generateDataURI, getProxyableIRI, getFragmentOrLastPath } from './uri.js'
+import { getResourceHead, deleteResource, processSave, patchResourceWithAcceptPatch } from './fetcher.js'
 import rdf from "rdf-ext";
 import { getResourceGraph, sortGraphTriples, getGraphContributors, getGraphAuthors, getGraphEditors, getGraphPerformers, getGraphPublishers, getGraphLabel, getGraphEmail, getGraphTitle, getGraphConceptLabel, getGraphPublished, getGraphUpdated, getGraphDescription, getGraphLicense, getGraphRights, getGraphFromData, getGraphAudience, getGraphTypes, getGraphLanguage, getGraphInbox, getUserLabelOrIRI, getGraphImage } from './graph.js'
 import LinkHeader from "http-link-header";
 import { micromark as marked } from 'micromark';
 import { gfm, gfmHtml } from 'micromark-extension-gfm';
 import { gfmTagfilterHtml } from 'micromark-extension-gfm-tagfilter';
-import { DOMSerializer, Fragment, DOMParser as PmDOMParser } from 'prosemirror-model';
 import { Icon } from './ui/icons.js';
 import { showUserIdentityInput, signOut } from './auth.js'
 import { buttonIcons, getButtonHTML, updateButtons } from './ui/buttons.js'
 import { domSanitizeHTMLBody, domSanitize } from './utils/sanitization.js';
 import { cleanProseMirrorOutput, normalizeHTML } from './utils/normalization.js';
 import { formatHTML, getDoctype, htmlEncode } from './utils/html.js';
-import { schema } from './editor/schema/base.js';
+import { i18n } from './i18n.js';
 
 const ns = Config.ns;
 
@@ -323,7 +322,7 @@ function createFeedXML(feed, options) {
         let dateStr =
           feed.items[i].updated ? new Date(feed.items[i].updated) :
           feed.items[i].published ? new Date(feed.items[i].published) :
-          feed.items[i].headers?.date ? new Date(feed.items[i].headers.date) :
+          feed.items[i].headers?.date?.['field-value'] ? new Date(feed.items[i].headers.date['field-value']) :
           new Date();
 
         published = `<pubDate>${dateStr.toUTCString()}</pubDate>`;
@@ -612,7 +611,7 @@ function createNoteDataHTML(n) {
     default: case 'read':
       hX = 3;
       if ('creator' in n && 'iri' in n.creator && n.creator.iri == Config.User.IRI) {
-        buttonDelete = '<button aria-label="Delete item" class="delete do" title="Delete item">' + Icon[".fas.fa-trash-alt"] + '</button>';
+        buttonDelete = '<button aria-label="Delete item" class="delete do" title="Delete item" type="button">' + Icon[".fas.fa-trash-alt"] + '</button>';
       }
       // articleClass = (motivatedByIRI == 'oa:commenting') ? '' : ' class="do"';
       aAbout = ('iri' in n) ? n.iri : aAbout;
@@ -901,10 +900,12 @@ function showActionMessage(node, message, options = {}) {
 
   let aside = node.querySelector('#document-action-message');
   if (!aside) {
-    node.appendChild(fragmentFromString('<aside id="document-action-message" class="do on" role="status" tabindex="0">' + Config.Button.Close + '<h2>Messages</h2><ul role="log"></ul></aside>'));
+    var buttonClose = getButtonHTML({ key: 'dialog.document-action-message.close.button', button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
+
+    node.appendChild(fragmentFromString(`<aside aria-labelledby="document-action-message-label" class="do on" id="document-action-message" lang="${i18n.language()}" role="status" tabindex="0" xml:lang="${i18n.language()}"><h2 data-i18n="dialog.document-action-message.messages.h2" id="document-action-message-label">${i18n.t('dialog.document-action-message.messages.h2.textContent')}</h2>${buttonClose}<ul role="log"></ul></aside>`));
     aside = node.querySelector('#document-action-message');
   }
-  aside.querySelector('h2 + ul').insertAdjacentHTML('afterbegin', messageItem);
+  aside.querySelector('ul[role="log"]').insertAdjacentHTML('afterbegin', messageItem);
 
   let timerId = null;
 
@@ -1037,6 +1038,8 @@ function createDateHTML(options) {
 
   var title = ('title' in options) ? options.title : 'Created';
 
+  const titleKey = title.toLowerCase().replace(/\s+/g, '-');
+
   var id = ('id' in options && options.id.length > 0) ? ' id="' + options.id + '"' : '';
 
   var c = ('class' in options && options.class.length > 0) ? ' class="' + options.class + '"' : '';
@@ -1048,11 +1051,11 @@ function createDateHTML(options) {
     ? '<time content="' + datetime + '" datatype="xsd:dateTime" datetime="' + datetime + '" property="' + options.property + '">' + datetimeLabel + '</time>'
     : '<time datetime="' + datetime + '">' + datetimeLabel + '</time>';
 
-  var date = '        <dl' + c + id + '>\n\
-      <dt>' + title + '</dt>\n\
-      <dd>' + time + '</dd>\n\
-    </dl>\n\
-';
+  var date = `        <dl${c}${id}>
+      <dt data-i18n="datetime.${titleKey}.dt">${i18n.t(`datetime.${titleKey}.dt.textContent`)}</dt>
+      <dd>${time}</dd>
+    </dl>
+`;
 
   return date;
 }
@@ -1310,7 +1313,9 @@ function showTimeMap(node, url) {
       if (!node) {
         node = document.getElementById(elementId);
         if (!node) {
-          document.body.appendChild(fragmentFromString('<aside id="' + elementId + '" class="do on"><h2>Memento</h2>' + Config.Button.Close + '<dl><dt>TimeMap</dt><dd><a href="' + url + '">' + url + '</a></dd></dl></aside>'));
+          var buttonClose = getButtonHTML({ key: "dialog.memento-document.close.button", button: 'close', buttonClass: 'close', iconSize: 'fa-2x' });
+
+          document.body.appendChild(fragmentFromString(`<aside aria-labelledby="${elementId}-label" class="do on" id="${elementId}" lang="${i18n.language()}" xml:lang="${i18n.language()}"><h2 id="${elementId}-label">Memento</h2>${buttonClose}<dl><dt>TimeMap</dt><dd><a href="${url}">${url}</a></dd></dl></aside>`));
           node = document.getElementById(elementId);
         }
       }
@@ -1460,7 +1465,7 @@ function handleDeleteNote(button) {
 
 //TODO: Inform the user that this information feature may fetch a resource from another origin, and ask whether they want to go ahead with it.
 function eventButtonInfo() {
-  const errorMessage = `<p class="error">Can't find the documentation. Try later.</p>`;
+  const errorMessage = `<p class="error" data-i18n="info.button-info.error.p">${i18n.t('info.button-info.error.p.textContent')}</p>`;
 
   document.addEventListener('click', e => {
     // console.log(e.target)
@@ -1570,12 +1575,12 @@ function eventButtonInfo() {
                 }
 
                 if (videoThumbnailUrl) {
-                  thumbnailUrl = ` (<a href="${videoThumbnailUrl}">poster</a>)`;
+                  thumbnailUrl = ` (<a data-i18n="info.button-info.poster.a" href="${videoThumbnailUrl}">${i18n.t('info.button-info.poster.a.textContent')}</a>)`;
                   videoPoster = ` poster="${videoThumbnailUrl}"`;
                 }
 
                 figcaption = `
-                  <figcaption><a href="${videoContentUrl}">Video</a>${thumbnailUrl} of in dokieli [${duration}${comma}${encodingFormat}]</figcaption>
+                  <figcaption><a href="${videoContentUrl}" data-i18n="info.button-info.video.a">${i18n.t('info.button-info.video.a.textContent')}</a>${thumbnailUrl} [${duration}${comma}${encodingFormat}]</figcaption>
                 `;
               }
 
@@ -1594,7 +1599,7 @@ function eventButtonInfo() {
 
               if (seeAlsos.length) {
                 seeAlso = `
-                  <dt>See also</dt><dd><ul>
+                  <dt data-i18n="info.button-info.see-also.dt">${i18n.t('info.button-info.see-also.dt.textContent')}</dt><dd><ul>
                   ${seeAlsos.map(seeAlsoIRI => {
                   const seeAlsoIRIG = g.node(rdf.namedNode(seeAlsoIRI));
                   const seeAlsoTitle = getGraphTitle(seeAlsoIRIG) || seeAlsoIRI;
@@ -1626,7 +1631,7 @@ function eventButtonInfo() {
 
               if (subjectItems.length) {
                 subject = `
-                  <dt>Subjects</dt><dd><dl>
+                  <dt data-i18n="info.button-info.subjects.dt">${i18n.t('info.button-info.subjects.dt.textContent')}</dt><dd><dl>
                   ${subjectItems.join('')}
                   </dl></dd>
                 `;
@@ -1635,14 +1640,14 @@ function eventButtonInfo() {
 
             details = `
               <details about="${resource}" open="">
-                <summary property="schema:name">About ${title}</summary>
+                <summary data-i18n="info.button-info.about.summary" property="schema:name">${i18n.t('info.button-info.about.summary.textContent')} ${title}</summary>
                 ${image}
                 <div datatype="rdf:HTML" property="schema:description">
                 ${description}
                 </div>
                 ${video}
                 <dl>
-                  <dt>Source</dt>
+                  <dt data-i18n="info.button-info.source.dt">${i18n.t('info.button-info.source.dt.textContent')}</dt>
                   <dd><a href="${resource}" rel="dcterms:source noopener" target="_blank">${resource}</a></dd>
                   ${subject}
                   ${seeAlso}
@@ -1885,6 +1890,12 @@ function getGraphData(s, options) {
   }
 
   info['spec'] = {};
+
+  var classesOfProducts = s.out(ns.spec.classesOfProducts).values;
+  if (classesOfProducts.length && s.term.value == documentURL) {
+    info['spec']['classesOfProducts'] = getResourceInfoSpecClassesOfProducts(s);
+  }
+
   var requirement = s.out(ns.spec.requirement).values;
   if (requirement.length && s.term.value == documentURL) {
     info['spec']['requirement'] = getResourceInfoSpecRequirements(s);
@@ -2284,6 +2295,57 @@ function getResourceInfoODRLPolicies(s) {
   return info['odrl'];
 }
 
+function getResourceInfoSpecClassesOfProducts(s) {
+  var info = {}
+  info['spec'] = {};
+  info['spec']['classesOfProducts'] = {};
+
+  // console.trace();
+  s.out(ns.spec.classesOfProducts).values.forEach(classesOfProductsConceptSchemeIRI => {
+    info['spec']['classesOfProducts'] = {};
+    info['spec']['classesOfProducts'][classesOfProductsConceptSchemeIRI] = {};
+
+    var classesOfProductsGraph = s.node(rdf.namedNode(classesOfProductsConceptSchemeIRI));
+    info['spec']['classesOfProducts'][classesOfProductsConceptSchemeIRI]['skos'] = getResourceInfoSKOS(classesOfProductsGraph);
+    var conceptSchemes = info['spec']['classesOfProducts'][classesOfProductsConceptSchemeIRI]['skos'].data;
+    if (conceptSchemes) {
+      Object.keys(conceptSchemes).forEach(conceptScheme => {
+        var conceptIRIs = conceptSchemes[conceptScheme][ns.skos.hasTopConcept];
+        if (conceptIRIs) {
+          conceptIRIs.forEach(conceptIRI => {
+            var conceptGraph = s.node(rdf.namedNode(conceptIRI));
+            Config.Resource[conceptIRI] = {};
+            Config.Resource[conceptIRI]['graph'] = conceptGraph;
+            Config.Resource[conceptIRI]['skos'] = getResourceInfoSKOS(conceptGraph);
+          })
+        }
+      })
+    }
+  });
+
+  return info['spec']['classesOfProducts'];
+}
+
+//XXX: Should this be stored for cheaper reuse?
+function getClassesOfProductsConcepts() {
+  var concepts = [];
+
+  if (Config.Resource[DO.C.DocumentURL]?.spec?.classesOfProducts) {
+    var classesOfProducts = Config.Resource[DO.C.DocumentURL]?.spec?.classesOfProducts;
+
+    Object.keys(classesOfProducts).forEach(conceptSchemeIRI => {
+      var conceptScheme = classesOfProducts[conceptSchemeIRI].skos.data;
+      var hasTopConcepts = conceptScheme[conceptSchemeIRI][ns.skos.hasTopConcept];
+      if (hasTopConcepts) {
+        concepts = concepts.concat(hasTopConcepts);
+      }
+    })
+  }
+
+  return concepts;
+}
+
+
 //TODO: Review grapoi
 function getResourceInfoSpecRequirements(s) {
   var info = {}
@@ -2294,7 +2356,6 @@ function getResourceInfoSpecRequirements(s) {
     info['spec']['requirement'][requirementIRI] = {};
 
     var requirementGraph = s.node(rdf.namedNode(requirementIRI));
-
     info['spec']['requirement'][requirementIRI][ns.spec.statement.value] = requirementGraph.out(ns.spec.statement).values[0];
     info['spec']['requirement'][requirementIRI][ns.spec.requirementSubject.value] = requirementGraph.out(ns.spec.requirementSubject).values[0];
     info['spec']['requirement'][requirementIRI][ns.spec.requirementLevel.value] = requirementGraph.out(ns.spec.requirementLevel).values[0];
@@ -2542,7 +2603,7 @@ function createImmutableResource(url, data, options) {
     setDocumentRelation(document, [r], o);
 
     // Create URI-R
-    data = getDocument(null, documenOptions);
+    data = getDocument(null, documentOptions);
     processSave(url, null, data, options)
       .then((resolved) => handleActionMessage(resolved))
       .catch((rejected) => handleActionMessage(null, rejected))
@@ -2837,7 +2898,7 @@ function showRobustLinksDecoration(node) {
 
     var originalurl = i.getAttribute('data-originalurl');
     originalurl = (originalurl) ? originalurl.trim() : undefined;
-    originalurl = (originalurl) ? '<span>Original</span><span><a href="' + originalurl + '" rel="noopener" target="_blank">' + originalurl + '</a></span>' : '';
+    originalurl = (originalurl) ? `<span data-i18n="popup.robustlinks.original.span">${i18n.t('popup.robustlinks.original.span.textContent')}</span><span><a href="${originalurl}" rel="noopener" target="_blank">${originalurl}</a></span>` : '';
 
     var versionurl = i.getAttribute('data-versionurl');
     versionurl = (versionurl) ? versionurl.trim() : undefined;
@@ -2847,13 +2908,13 @@ function showRobustLinksDecoration(node) {
     if (versiondate) {
       versiondate = versiondate.trim();
       nearlinkdateurl = 'http://timetravel.mementoweb.org/memento/' + versiondate.replace(/\D/g, '') + '/' + href;
-      nearlinkdateurl = '<span>Near Link Date</span><span><a href="' + nearlinkdateurl + '" rel="noopener" target="_blank">' + versiondate + '</a></span>'
+      nearlinkdateurl = `<span data-i18n="popup.robustlinks.near-link-date.span">${i18n.t('popup.robustlinks.near-link-date.span.textContent')}</span><span><a href="${nearlinkdateurl}" rel="noopener" target="_blank">${versiondate}</a></span>`;
     }
     else if (versionurl) {
       versiondate = versionurl;
     }
 
-    versionurl = (versionurl) ? '<span>Version</span><span><a href="' + versionurl + '" rel="noopener" target="_blank">' + versiondate + '</a></span>' : '';
+    versionurl = (versionurl) ? `<span data-i18n="popup.robustlinks.version.span">${i18n.t('popup.robustlinks.version.span.textContent')}</span><span><a href="${versionurl}" rel="noopener" target="_blank">${versiondate}</a></span>` : '';
 
     // var citations = Object.keys(Config.Citation).concat(ns.schema.citation);
 
@@ -2869,11 +2930,11 @@ function showRobustLinksDecoration(node) {
 
       if (citationLabels.length > 0) {
         citationType = citationLabels.join(', ');
-        citation = '<span>Citation Reason</span><span>' + citationType + '</span>';
+        citation = `<span data-i18n="popup.robustlinks.citation-reason.span">${i18n.t('popup.robustlinks.citation-reason.span.textContent')}</span><span>${citationType}</span>`;
       }
     }
 
-    i.insertAdjacentHTML('afterend', `<span class="do robustlinks">${getButtonHTML({ button: 'robustify-links', buttonTitle: 'Show Robust Links' })}<span>${citation}${originalurl}${versionurl}${nearlinkdateurl}</span></span>`);
+    i.insertAdjacentHTML('afterend', `<span class="do robustlinks">${getButtonHTML({ key: 'popup.robustlinks.show.button', button: 'robustify-links' })}<span>${citation}${originalurl}${versionurl}${nearlinkdateurl}</span></span>`);
   });
 
   document.querySelectorAll('.do.robustlinks').forEach(i => {
@@ -2916,8 +2977,9 @@ function getTestDescriptionReviewStatusHTML() {
   reviewStatusHTML.push('<dl id="test-description-review-statuses">');
 
   Object.keys(Config.TestDescriptionReviewStatus).forEach(i => {
+    const key = Config.TestDescriptionReviewStatus[i].toLowerCase().replace(/\s+/g, '-');
     reviewStatusHTML.push('<dt>' + getFragmentFromString(i) + '</dt>');
-    reviewStatusHTML.push('<dd>' + Config.TestDescriptionReviewStatus[i] + '</dd>');
+    reviewStatusHTML.push(`<dd data-i18n="test-description-review-status.${key}.dd">${i18n.t(`test-description-review-status.${key}.dd.textContent`)}</dd>`);
   })
 
   reviewStatusHTML.push('</dl>');
@@ -2973,14 +3035,17 @@ function createLicenseRightsHTML(iri, options = {}) {
   var title = '';
   var name = iri;
 
-  html = '<dl class="' + options.label.toLowerCase() + '"><dt>' + options.label + '</dt><dd>';
-  if ('name' in options) {
-    name = options.name;
-    title = ('description' in options) ? ' title="' + options.description + '"' : '';
-  }
-  else if (Config.License[iri]) {
+  const labelKey = options.label.toLowerCase().replace(/\s+/g, '-');
+
+  html = `<dl class="${labelKey}"><dt data-i18n="license.${labelKey}.dt">${i18n.t(`license.${labelKey}.dt.textContent`)}</dt><dd>`;
+  // if ('name' in options) {
+  //   name = options.name;
+  //   title = ('description' in options) ? ` title="${i18n.t(`license.${labelKey}.dt.title`)}"` : '';
+  // }
+  // else
+  if (Config.License[iri]) {
     name = Config.License[iri].name;
-    title = ' title="' + Config.License[iri].description + '"';
+    title = ` title="${i18n.t('licenses.' + Config.License[iri].code + '.option.title')}""`;
   }
 
   html += '<a href="' + iri + '" rel="' + options.rel + '"' + title + '>' + name + '</a>';
@@ -3098,7 +3163,7 @@ function createPublicationStatusHTML(url, options = {}) {
   if (!url) return '';
 
   options['class'] = options.class || 'publication-status';
-  var textContent = Config.PublicationStatus[url].name || url;
+  var textContent = Config.PublicationStatus[url] || url;
   options['title'] = 'Status';
 
   return createDefinitionListHTML(
@@ -3120,7 +3185,7 @@ function createResourceTypeHTML(url, options = {}) {
   if (!url) return '';
 
   options['class'] = options.class || 'resource-type';
-  var textContent = Config.ResourceType[url].name || url;
+  var textContent = Config.ResourceType[url] || url;
   options['title'] = 'Type';
 
   return createDefinitionListHTML([{ 'href': url, 'rel': 'rdf:type', textContent }], options);
@@ -3142,7 +3207,7 @@ function getAnnotationInboxLocationHTML(action) {
     if (Config.User.UI && Config.User.UI['annotationInboxLocation'] && Config.User.UI.annotationInboxLocation['checked']) {
       checked = ' checked="checked"';
     }
-    s = `<input type="checkbox" id="${action}-annotation-inbox" name="${action}-annotation-inbox"${checked} /><label for="annotation-inbox">Inbox</label>`;
+    s = `<input type="checkbox" id="${action}-annotation-inbox" name="${action}-annotation-inbox"${checked} /><label data-i18n="annotation-inbox.label" for="${action}-annotation-inbox">${i18n.t('annotation-inbox.label.textContent')}</label>`;
   }
 
   return s;
@@ -3150,6 +3215,10 @@ function getAnnotationInboxLocationHTML(action) {
 
 function getAnnotationLocationHTML(action) {
   var s = '', inputs = [], checked = '';
+
+  if (DO.Editor.mode == 'author') {
+    return s;
+  }
 
   if (typeof Config.AnnotationService !== 'undefined') {
     if (Config.User.Storage && Config.User.Storage.length > 0 || Config.User.Outbox && Config.User.Outbox.length > 0) {
@@ -3161,7 +3230,7 @@ function getAnnotationLocationHTML(action) {
       checked = ' checked="checked" disabled="disabled"';
     }
 
-    inputs.push(`<input type="checkbox" id="${action}-annotation-location-service" name="${action}-annotation-location-service"${checked} /><label for="annotation-location-service">Annotation service</label>`);
+    inputs.push(`<input type="checkbox" id="${action}-annotation-location-service" name="${action}-annotation-location-service"${checked} /><label data-i18n="annotation-location.annotation-service.label" for="${action}-annotation-location-service">${i18n.t('annotation-location.annotation-service.label.textContent')}</label>`);
   }
 
   checked = ' checked="checked"';
@@ -3171,22 +3240,24 @@ function getAnnotationLocationHTML(action) {
       checked = '';
     }
 
-    inputs.push(`<input type="checkbox" id="${action}-annotation-location-personal-storage" name="${action}-annotation-location-personal-storage"${checked} /><label for="annotation-location-personal-storage">Personal storage</label>`);
+    inputs.push(`<input type="checkbox" id="${action}-annotation-location-personal-storage" name="${action}-annotation-location-personal-storage"${checked} /><label data-i18n="annotation-location.personal-storage.label" for="${action}-annotation-location-personal-storage">${i18n.t('annotation-location.personal-storage.label.textContent')}</label>`);
   }
 
-  s = 'Store at: ' + inputs.join('');
+  if (inputs.length) {
+    s = `<span data-i18n="annotation-location-selection.store-at.span">${i18n.t('annotation-location-selection.store-at.span.textContent')}</span>` + inputs.join('');
+  }
 
   return s;
 }
 
 function getPublicationStatusOptionsHTML(options) {
   options = options || {};
-  var s = '', selectedIRI = '';
+  var s = [], selectedIRI = '';
 
   if ('selected' in options) {
     selectedIRI = options.selected;
     if (selectedIRI == '') {
-      s += '<option selected="selected" value="">Choose a publication status</option>';
+      s.push(`<option data-i18n="publication-status.choose.option" selected="selected" value="">${i18n.t('publication-status.choose.option.textContent')}</option>`);
     }
   }
   else {
@@ -3195,20 +3266,21 @@ function getPublicationStatusOptionsHTML(options) {
 
   Object.keys(Config.PublicationStatus).forEach(iri => {
     var selected = (iri == selectedIRI) ? ' selected="selected"' : '';
-    s += '<option value="' + iri + '" title="' + Config.PublicationStatus[iri].description + '"' + selected + '>' + Config.PublicationStatus[iri].name + '</option>';
+    const key = Config.PublicationStatus[iri].toLowerCase().replace(/\s+/g, '-');
+    s.push(`<option data-i18n="publication-status.${key}.option"${selected} title="${i18n.t(`publication-status.${key}.option.title`)}" value="${iri}">${i18n.t(`publication-status.${key}.option.textContent`)}</option>`);
   })
 
-  return s;
+  return s.join('');
 }
 
 function getResourceTypeOptionsHTML(options) {
   options = options || {};
-  var s = '', selectedType = '';
+  var s = [], selectedType = '';
 
   if ('selected' in options) {
     selectedType = options.selected;
     if (selectedType == '') {
-      s += '<option selected="selected" value="">Choose a resource type</option>';
+      s.push(`<option data-i18n="resource-type.choose.option" selected="selected" value="">${i18n.t('resource-type.choose.option.textContent')}</option>`);
     }
   }
   else {
@@ -3217,23 +3289,24 @@ function getResourceTypeOptionsHTML(options) {
 
   Object.keys(Config.ResourceType).forEach(iri => {
     var selected = (iri == selectedType) ? ' selected="selected"' : '';
-    s += '<option value="' + iri + '" title="' + Config.ResourceType[iri].description + '"' + selected + '>' + Config.ResourceType[iri].name + '</option>';
+    const key = Config.ResourceType[iri].toLowerCase().replace(/\s+/g, '-');
+    s.push(`<option data-i18n="${`resource-type.${key}.option`}"${selected} title="${i18n.t(`resource-type.${key}.option.title`)}" value="${iri}">${i18n.t(`resource-type.${key}.option.textContent`)}</option>`);
   });
 
-  return s;
+  return s.join('');
 }
 
 function getLanguageOptionsHTML(options) {
   options = options || {};
-  var s = '', selectedLang = '';
+  var s = [], selectedLang = '';
 
   if ('selected' in options) {
     selectedLang = options.selected;
     if (selectedLang == '') {
-      s += '<option selected="selected" value="">Choose a language</option>';
+      s.push(`<option data-i18n="language.choose.option" selected="selected" value="">${i18n.t('language.choose.option.textContent')}</option>`);
     }
   }
-  else if (typeof Config.User.UI.Language !== 'undefined') {
+  else if (typeof Config.User.UI?.Language !== 'undefined') {
     selectedLang = Config.User.UI.Language;
   }
   else {
@@ -3242,20 +3315,20 @@ function getLanguageOptionsHTML(options) {
 
   Object.keys(Config.Languages).forEach(lang => {
     let selected = (lang == selectedLang) ? ' selected="selected"' : '';
-    s += '<option' + selected + ' value="' + lang + '">' + Config.Languages[lang] + '</option>';
+    s.push(`<option lang="${lang}"${selected} value="${lang}" xml:lang="${lang}">${Config.Languages[lang]}</option>`);
   });
 
-  return s;
+  return s.join('');
 }
 
 function getLicenseOptionsHTML(options) {
   options = options || {};
-  var s = '', selectedIRI = '';
+  var s = [], selectedIRI = '';
 
   if ('selected' in options) {
     selectedIRI = options.selected;
     if (selectedIRI == '') {
-      s += '<option selected="selected" value="">Choose a license</option>';
+      s.push(`<option data-i18n="license.choose.option" selected="selected" value="">${i18n.t('license.choose.option.textContent')}</option>`);
     }
   }
   else if (typeof Config.User.UI.License !== 'undefined') {
@@ -3268,23 +3341,79 @@ function getLicenseOptionsHTML(options) {
   Object.keys(Config.License).forEach(iri => {
     if (iri != 'NoLicense') {
       var selected = (iri == selectedIRI) ? ' selected="selected"' : '';
-      s += '<option value="' + iri + '" title="' + Config.License[iri].description + '"' + selected + '>' + Config.License[iri].name + '</option>';
+      s.push(`<option data-i18n="license.${Config.License[iri].code}.option" value="${iri}"${selected} title="${i18n.t('license.' + Config.License[iri].code + '.option.title')}">${Config.License[iri].name}</option>`);
     }
   })
 
-  return s;
+  return s.join('');
 }
 
-function getCitationOptionsHTML(type) {
-  type = type || 'cites';
+function getCitationOptionsHTML(options) {
+  options = options || {};
+  var s = [], selectedIRI = '';
+
+  if ('selected' in options) {
+    selectedIRI = options.selected;
+    if (selectedIRI == '') {
+      s.push(`<option data-i18n="citation.choose.option" selected="selected" value="">${i18n.t('citation.choose.option.textContent')}</option>`);
+    }
+  }
+
+  Object.keys(Config.Citation).forEach(iri => {
+    const key = Config.Citation[iri].toLowerCase().replace(/\s+/g, '-');
+    s.push(`<option data-i18n="${`citation.${key}.option`}" value="${iri}">${i18n.t(`citation.${key}.option.textContent`)}</option>`);
+  })
+
+  return s.join('');
+}
+
+function getRequirementLevelOptionsHTML(type) {
+  type = type || 'MUST';
 
   var s = '';
-  Object.keys(Config.Citation).forEach(iri => {
-    s += '<option value="' + iri + '">' + Config.Citation[iri] + '</option>';
+  Object.keys(Config.RequirementLevel).forEach(iri => {
+    s += '<option value="' + iri + '">' + Config.RequirementLevel[iri] + '</option>';
   })
 
   return s;
 }
+
+function getRequirementSubjectOptionsHTML(options) {
+  options = options || {};
+  var s = '', selectedIRI = '';
+// console.trace();
+// console.log(options)
+
+  if ('selected' in options) {
+    selectedIRI = options.selected;
+    if (selectedIRI == '') {
+      s += '<option selected="selected" value="">Choose a requirement subject</option>';
+    }
+  }
+
+  const conceptIRIs = getClassesOfProductsConcepts();
+// console.log(concepts)
+  if (conceptIRIs.length) {
+    conceptIRIs.forEach(conceptIRI => {
+      var conceptData = Config.Resource[conceptIRI]?.skos?.data[conceptIRI];
+
+      if (conceptData) {
+        var conceptLabel = conceptData[ns.skos.prefLabel] || '';
+        var title = conceptData[ns.skos.definition] || '';
+        if (title) {
+          title = ` title="${htmlEncode(title)}"`;
+        }
+
+        var selected = (conceptIRI == selectedIRI) ? ' selected="selected"' : '';
+
+        s += '<option value="' + conceptIRI + '"' + selected + title + '>' + conceptLabel + '</option>';
+      }
+    })
+  }
+
+  return s;
+}
+
 
 function showGeneralMessages() {
   showResourceAudienceAgentOccupations();
@@ -3298,12 +3427,13 @@ function getAccessModeOptionsHTML(options) {
   options['context'] = options['context'] || 'Share';
   var accessContext = Config.AccessContext[options.context] || 'Share';
 
-  var s = '<option value="">No access</option>';
+  var s = `<option data-i18n="dialog.share-resource.select-access-mode.no-access.option" value="">${i18n.t(`dialog.share-resource.select-access-mode.no-access.option.textContent`)}</option>`;
 
   var modes = Object.keys(accessContext);
   modes.forEach(mode => {
     var selected = (options.selected && (mode === options.selected)) ? ' selected="selected"' : '';
-    s += '<option' + selected + ' value="' + mode + '">' + accessContext[mode] + '</option>';
+    var modeName = accessContext[mode];
+    s += `<option data-i18n="dialog.share-resource.select-access-mode.acl-${modeName}.option"${selected} value="${mode}">${i18n.t(`dialog.share-resource.select-access-mode.acl-${modeName}.option.textContent`)}</option>`;
   });
 
   // console.log(s);
@@ -3349,7 +3479,7 @@ function showResourceAudienceAgentOccupations() {
         if (ul.length > 0) {
           ul = `<ul>${ul.join('')}</ul>`;
 
-          var message = `<span>This document's audience matches your profile:</span>${ul}`;
+          var message = `<span data-i18n="dialog.document-action-message.audience-occupation.span">${i18n.t("dialog.document-action-message.audience-occupation.span.textContent")}</span>${ul}`;
           message = {
             'content': message,
             'type': 'info',
@@ -3386,7 +3516,7 @@ function setCopyToClipboard(contentNode, triggerNode, options = {}) {
 
       navigator.clipboard.writeText(text)
         .then(() => {
-          var message = `Copied to clipboard.`;
+          var message = `<span data-i18n="dialog.document-action-message.clipboard-success.span">${i18n.t('dialog.document-action-message.clipboard-success.span.textContent')}</span>`;
           message = {
             'content': message,
             'type': 'info',
@@ -3396,7 +3526,7 @@ function setCopyToClipboard(contentNode, triggerNode, options = {}) {
           showActionMessage(document.body, message);
         })
         .catch(error => {
-          var message = `Failed to copy text to clipboard.`;
+          var message = `<span data-i18n="dialog.document-action-message.clipboard-fail.span">${i18n.t('dialog.document-action-message.clipboard-fail.span.textContent')}</span>`;
           message = {
             'content': message,
             'type': 'error',
@@ -3520,6 +3650,7 @@ function getReferenceLabel(motivatedBy) {
 }
 
 function createRDFaMarkObject(r, mode) {
+  //Generic
   let about = r['about'];
   let resource = r['resource'];
   let typeOf = r['typeof'];
@@ -3547,6 +3678,7 @@ function createRDFaMarkObject(r, mode) {
   return { element, attrs }
 }
 
+//mode value can be: exapanded or null
 function createRDFaHTML(r, mode) {
   var s = '', about = '', property = '', rel = '', resource = '', href = '', content = '', langDatatype = '', typeOf = '', idValue = '', id = '';
 
@@ -3607,6 +3739,93 @@ function createRDFaHTML(r, mode) {
   return s;
 }
 
+//TODO: Work on HTML nodes instead of the selected text
+function createRDFaHTMLRequirement(r, mode) {
+  var s = '', about = '', property = '', rel = '', resource = '', href = '', content = '', langDatatype = '', typeOf = '', idValue = '', id = '', subject = '', level = '', basedOnConsensus;
+
+  var idValue = r.id || generateAttributeId();
+  id = ` id="${idValue}"`;
+
+  var aboutValue = ('about' in r && r.about != '') ? r.about : '';
+  about= ` about="${aboutValue}"`;
+
+  rel = ' rel="spec:requirement"';
+  resource = ' resource="#' + idValue + '"';
+
+  if ('lang' in r && r.lang != '') {
+    langDatatype = ' lang="' + r.lang + '" xml:lang="' + r.lang + '"';
+  }
+  else {
+    if ('datatype' in r && r.datatype != '') {
+      langDatatype = ' datatype="' + r.datatype + '"';
+    }
+  }
+
+  if ('typeOf' in r && r.typeOf != '') {
+    typeOf = ' typeof="' + r.typeOf + '"';
+  }
+
+  //TODO: Perhaps the value passed to this function should include both requirementSubjectURI and requirementSubjectLabel. For now this is URI and label is derived :( Same goes for requirement level.
+
+  //TODO: Handle undefined r.subject, level etc.
+  var requirementSubjectURI = r.subject;
+  var requirementSubjectLabel = requirementSubjectURI ? getFragmentOrLastPath(requirementSubjectURI) : '';
+  var requirementLevelURI = r.level;
+  var requirementLevelLabel = requirementLevelURI ? getFragmentOrLastPath(requirementLevelURI): '';
+  var prevRequirementLevelLabel = r.prevLevelLabel || requirementLevelLabel;
+  var prevRequirementSubjectLabel = r.prevSubjectLabel || requirementSubjectLabel;
+  var selectedTextContent = r.selectedTextContent || '';
+  var selectedHtmlString = r.selectedHtmlString || selectedTextContent;
+
+  var requirementSubject = `<span rel="spec:requirementSubject" resource="${requirementSubjectURI}">${requirementSubjectLabel}</span>`;
+  var requirementLevel = `<span rel="spec:requirementLevel" resource="${requirementLevelURI}">${requirementLevelLabel}</span>`;
+
+  // console.log(selectedTextContent);
+
+  console.log("NODES: ", r.nodes)
+
+  const subjectLabel = prevRequirementSubjectLabel;
+  const levelLabel = prevRequirementLevelLabel;
+  
+  const subjIndex = selectedHtmlString.indexOf(subjectLabel);
+  const levelIndex = selectedHtmlString.indexOf(levelLabel);
+  
+  const replacements = [
+    { start: subjIndex, end: subjIndex + (subjectLabel||'').length, replacement: requirementSubject },
+    { start: levelIndex, end: levelIndex + (levelLabel||'').length, replacement: requirementLevel }
+  ]
+    .filter(r => r.start !== -1)
+    .sort((a,b) => b.start - a.start);
+  
+  let newHtmlString = selectedHtmlString;
+  for (const { start, end, replacement } of replacements) {
+    newHtmlString = newHtmlString.slice(0, start) + replacement + newHtmlString.slice(end);
+  }
+  var statement = `<span property="spec:statement">${newHtmlString}</span>`;
+
+  //TODO: Do other things that match terms from HTTP-RDF.
+
+  //TODO: if selected text is the only content in parent, consider using `p`
+  var element = 'span';
+
+  //Input (with or without p):
+  //<p>Client <code>SHOULD</code> generate a Content-Type header field in a message that contains content. [<a href="https://example.org/consensus/1" rel="cito:citesAsSourceDocument">Source</a>]</p>
+
+  // position the markup according to previous subject and level labels positions
+
+
+  //span or p:
+  //<p about="" id="server-content-type-includes" rel="spec:requirement" resource="#server-content-type-includes"><span property="spec:statement"><span rel="spec:requirementSubject" resource="#Server">Server</span> <span rel="spec:requirementLevel" resource="spec:MUST">MUST</span> generate a <code>Content-Type</code> header field in a message that contains content.</span></p>
+
+  s = '<' + element + about + id + langDatatype + rel + resource + typeOf + '>' + statement + '</' + element + '>';
+
+  // console.log(s)
+
+  return s;
+}
+
+
+
 export {
   getNodeWithoutClasses,
   getFragmentOfNodesChildren,
@@ -3647,6 +3866,7 @@ export {
   getResourceSupplementalInfo,
   processSupplementalInfoLinkHeaders,
   getResourceInfoODRLPolicies,
+  getResourceInfoSpecClassesOfProducts,
   getResourceInfoSpecRequirements,
   getResourceInfoSpecAdvisements,
   getResourceInfoSpecChanges,
@@ -3682,6 +3902,9 @@ export {
   getLanguageOptionsHTML,
   getLicenseOptionsHTML,
   getCitationOptionsHTML,
+  getClassesOfProductsConcepts,
+  getRequirementSubjectOptionsHTML,
+  getRequirementLevelOptionsHTML,
   getAccessModeOptionsHTML,
   showGeneralMessages,
   showResourceAudienceAgentOccupations,
@@ -3694,6 +3917,7 @@ export {
   createNoteDataHTML,
   tagsToBodyObjects,
   createRDFaHTML,
+  createRDFaHTMLRequirement,
   createRDFaMarkObject,
   createDefinitionListHTML,
   hasNonWhitespaceText

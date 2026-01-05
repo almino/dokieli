@@ -1,11 +1,12 @@
 import { schema } from "../schema/base.js"
-import { buttonIcons, getButtonHTML } from "../../ui/buttons.js"
-import { getAnnotationInboxLocationHTML, getAnnotationLocationHTML, getDocument, getDocumentContentNode, getLanguageOptionsHTML, getLicenseOptionsHTML, getReferenceLabel } from "../../doc.js";
-import { getTextQuoteHTML, cloneSelection, restoreSelection, setSelection, getSelectedParentElement } from "../utils/annotation.js";
+import { getButtonHTML } from "../../ui/buttons.js"
+import { getAnnotationInboxLocationHTML, getAnnotationLocationHTML, getClassesOfProductsConcepts, getDocument, getDocumentContentNode, getLanguageOptionsHTML, getLicenseOptionsHTML, getReferenceLabel } from "../../doc.js";
+import { getTextQuoteHTML, cloneSelection, setSelection, getSelectedParentElement } from "../utils/annotation.js";
 import { escapeRegExp, matchAllIndex, fragmentFromString } from "../../util.js";
 import { showUserIdentityInput } from "../../auth.js";
 import { getLinkRelation } from "../../graph.js";
 import Config from "../../config.js";
+import { i18n } from "../../i18n.js";
 
 const ns = Config.ns;
 
@@ -17,7 +18,18 @@ export class ToolbarView {
     this.toolbarPopups = this.getToolbarPopups()
     this.selection = null;
 
-    this.buttons = buttons.map(button => { return { button, command: this.toolbarCommands[button], dom: () => fragmentFromString(getButtonHTML({ button })).firstChild } })
+    this.buttons = buttons.map(button => { 
+      let buttonDisabled = false;
+
+      if (button === 'requirement' && !getClassesOfProductsConcepts().length) {
+        buttonDisabled = true;
+      }
+      return { 
+        button, 
+        command: this.toolbarCommands[button], 
+        dom: () => fragmentFromString(getButtonHTML({ button, buttonDisabled })).firstChild 
+      } 
+    })
 
     this.populateForms = this.getPopulateForms();
 
@@ -25,6 +37,7 @@ export class ToolbarView {
     this.formHandlers = this.getFormHandlers();
 
     this.formLegends = this.getFormLegends();
+    this.formPlaceholders = this.getFormPlaceholders();
 
     // Bind event handlers
     this.bindFormHandlers();
@@ -42,6 +55,8 @@ export class ToolbarView {
     this.dom = document.createElement("div");
     this.dom.id = 'document-editor';
     this.dom.className = 'do editor-toolbar editor-form-view-transition';
+    this.dom.setAttribute('lang', i18n.language());
+    this.dom.setAttribute('xml:lang', i18n.language());
 
     this.addToolbar();
 
@@ -92,13 +107,13 @@ export class ToolbarView {
   }
 
   setupPopup(button) {
-    const formControlsHTML = this.toolbarPopups[button];
+    const formControlsHTML = this.toolbarPopups[button]; // returns a function that builds the form HTML
     if (!formControlsHTML) return;
 
     const toolbarForm = document.createElement('form');
     toolbarForm.classList.add('editor-form');
     toolbarForm.id = 'editor-form-' + button;
-    toolbarForm.appendChild(fragmentFromString(`${formControlsHTML({ button, legend: this.formLegends[button] })}`));
+    toolbarForm.appendChild(fragmentFromString(`${formControlsHTML({ button, legend: this.formLegends[button], placeholder: this.formPlaceholders[button] })}`));
 
     this.dom.appendChild(toolbarForm);
 
@@ -159,12 +174,16 @@ export class ToolbarView {
 
       const formContent = toolbarForm.querySelector(`textarea#${button}-content`);
       const formFirstInput = toolbarForm.querySelector('input');
+      const formFirstSelect = toolbarForm.querySelector('select');
 
       if (formContent) {
         formContent.focus();
       }
-      else {
+      else if (formFirstInput) {
         formFirstInput.focus();
+      } 
+      else if (formFirstSelect) {
+        formFirstSelect.focus();
       }
 
       const lastClickedButton = this.dom.querySelector(`#editor-button-${button}`);
@@ -230,7 +249,12 @@ export class ToolbarView {
   getFormHandlers() {
     return [];
   }
+
   getFormLegends() {
+    return {};
+  }
+
+  getFormPlaceholders() {
     return {};
   }
 
@@ -660,23 +684,23 @@ export class ToolbarView {
 export function annotateFormControls(options) {
   return `
     <fieldset>
-      <legend>${options.legend}</legend>
+      <legend data-i18n="editor.toolbar.${options.button}.form.legend">${options.legend}</legend>
       <dl class="info">
         <dt class="required">*</dt>
-        <dd>Required field</dd>
+        <dd data-i18n="info.required">${i18n.t("info.required.textContent")}</dd>
       </dl>
-      <label for="${options.button}-content">Note</label>
-      <textarea class="editor-form-textarea" cols="20" id="${options.button}-content" name="${options.button}-content" placeholder="${options.placeholder ? options.placeholder : 'What do you think?'}" required="" rows="5"></textarea>
-      <label for="${options.button}-tagging">Tags</label> <input class="editor-form-input" id="${options.button}-tagging" name="${options.button}-tagging" placeholder="Separate tags with commas" />
-      <label for="${options.button}-language">Language</label>
+      <label data-i18n="editor.toolbar.note.form.label" for="${options.button}-content">${i18n.t('editor.toolbar.note.form.label.textContent')}</label>
+      <textarea class="editor-form-textarea" cols="20" data-i18n="editor.toolbar.${options.button}.form.textarea" id="${options.button}-content" name="${options.button}-content" placeholder="${options.placeholder}" required="" rows="5"></textarea>
+      <label data-i18n="tags.label" for="${options.button}-tagging">${i18n.t('tags.label.textContent')}</label> <input class="editor-form-input" id="${options.button}-tagging" name="${options.button}-tagging" data-i18n="tags.input" placeholder="${i18n.t('tags.input.placeholder')}" type="text" />
+      <label data-i18n="language.label" for="${options.button}-language">${i18n.t('language.label.textContent')}</label>
       <select class="editor-form-select" id="${options.button}-language" name="${options.button}-language">${getLanguageOptionsHTML()}</select>
-      <label for="${options.button}-license">License</label>
+      <label data-i18n="license.label" for="${options.button}-license">${i18n.t('license.label.textContent')}</label>
       <select class="editor-form-select" id="${options.button}-license" name="${options.button}-license">${getLicenseOptionsHTML()}</select>
       <span class="annotation-location-selection">${getAnnotationLocationHTML(options.button)}</span>
       <span class="annotation-inbox">${getAnnotationInboxLocationHTML(options.button)}</span>
 
-      <button class="editor-form-submit" title="Post" type="submit">Post</button>
-      <button class="editor-form-cancel" title="Cancel" type="button">Cancel</button>
+      <button class="editor-form-submit" data-i18n="editor.toolbar.form.post.button" type="submit">${i18n.t('editor.toolbar.form.post.button.textContent')}</button>
+      <button class="editor-form-cancel" data-i18n="editor.toolbar.form.cancel.button" type="button">${i18n.t('editor.toolbar.form.cancel.button.textContent')}</button>
     </fieldset>
   `
 }
